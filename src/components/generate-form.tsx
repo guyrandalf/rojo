@@ -202,7 +202,8 @@ export function GenerateForm({ onCreated }: { onCreated?: () => void }) {
           </span>
         </div>
 
-        <div className="grid gap-0 sm:grid-cols-2 lg:grid-cols-4">
+        {/* 2 cols so each control has room for − value + (4 cols clipped numbers) */}
+        <div className="grid gap-0 sm:grid-cols-2">
           <TouchField
             label="How many games"
             value={legCount}

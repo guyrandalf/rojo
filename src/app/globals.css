@@ -85,7 +85,10 @@ select {
   box-shadow: inset 2px 2px 0 #000;
   font-family: var(--font-mono);
   font-size: 18px;
-  min-height: 3rem;
+  min-height: 3.5rem;
+  /* Never clip digits like "60" → "6" or "1.20" → "1." */
+  overflow: visible;
+  text-overflow: clip;
 }
 
 input:focus,

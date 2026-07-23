@@ -9,9 +9,7 @@ type TouchFieldProps = {
   min?: number
   max?: number
   step?: number
-  /** How many decimals to show / allow */
   decimals?: number
-  /** Optional hint under the field */
   hint?: string
 }
 
@@ -60,13 +58,13 @@ export function TouchField({
   return (
     <label className="block border-b-3 border-black px-4 py-4 sm:border-r-3 lg:border-b-0">
       <span className="hud-label mb-2 block text-base">{label}</span>
-      <div className="flex items-stretch gap-2">
+      <div className="grid grid-cols-[3rem_minmax(0,1fr)_3rem] items-stretch gap-2">
         <button
           type="button"
           aria-label={`Decrease ${label}`}
           onClick={() => bump(-1)}
           disabled={value <= min}
-          className="flex size-12 shrink-0 items-center justify-center border-3 border-black bg-panel-2 text-2xl font-black text-ink shadow-[2px_2px_0_#000] active:translate-x-px active:translate-y-px disabled:opacity-40"
+          className="flex h-14 items-center justify-center border-3 border-black bg-panel-2 text-3xl font-black leading-none text-ink shadow-[2px_2px_0_#000] active:translate-x-px active:translate-y-px disabled:opacity-40"
         >
           −
         </button>
@@ -84,6 +82,10 @@ export function TouchField({
               setText(v)
             }
           }}
+          onFocus={(e) => {
+            // Select all so mobile users can replace easily
+            e.currentTarget.select()
+          }}
           onBlur={() => {
             if (text.trim() === "" || text === "." || text === "-") {
               onChange(min)
@@ -97,20 +99,20 @@ export function TouchField({
               e.currentTarget.blur()
             }
           }}
-          className="min-w-0 flex-1 text-center text-xl font-bold"
+          className="h-14 w-full min-w-[4.5rem] px-2 text-center font-mono text-2xl font-bold tabular-nums tracking-wide"
         />
         <button
           type="button"
           aria-label={`Increase ${label}`}
           onClick={() => bump(1)}
           disabled={value >= max}
-          className="flex size-12 shrink-0 items-center justify-center border-3 border-black bg-panel-2 text-2xl font-black text-ink shadow-[2px_2px_0_#000] active:translate-x-px active:translate-y-px disabled:opacity-40"
+          className="flex h-14 items-center justify-center border-3 border-black bg-panel-2 text-3xl font-black leading-none text-ink shadow-[2px_2px_0_#000] active:translate-x-px active:translate-y-px disabled:opacity-40"
         >
           +
         </button>
       </div>
       {hint ? (
-        <p className="mt-1.5 text-sm font-semibold text-dim">{hint}</p>
+        <p className="mt-2 text-sm font-semibold text-dim">{hint}</p>
       ) : null}
     </label>
   )

@@ -14,7 +14,7 @@ export default function HomePage() {
   return (
     <div className="min-h-screen text-ink">
       <header className="border-b-4 border-black bg-panel">
-        <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-4 sm:px-6">
+        <div className="mx-auto flex max-w-[90rem] flex-wrap items-center justify-between gap-3 px-4 py-4 sm:px-6">
           <div className="flex items-center gap-3">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
@@ -39,7 +39,7 @@ export default function HomePage() {
         </div>
       </header>
 
-      <main className="mx-auto max-w-6xl space-y-5 px-4 py-6 sm:px-6 sm:py-8">
+      <main className="mx-auto max-w-[90rem] space-y-5 px-4 py-6 sm:px-6 sm:py-8">
         <MatchdayHud bump={hudBump} />
 
         <div className="plate p-5 sm:p-6">
@@ -54,7 +54,7 @@ export default function HomePage() {
           </p>
         </div>
 
-        <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-start">
+        <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_340px] xl:grid-cols-[minmax(0,1fr)_380px] lg:items-start">
           <div className="min-w-0 space-y-5">
             {selectedSlipId ? (
               <SlipViewer
@@ -84,7 +84,7 @@ export default function HomePage() {
       </main>
 
       <footer className="border-t-4 border-black bg-panel">
-        <div className="mx-auto max-w-6xl px-4 py-4 text-sm font-semibold text-dim sm:px-6">
+        <div className="mx-auto max-w-[90rem] px-4 py-4 text-sm font-semibold text-dim sm:px-6">
           Not Sporty company · Odds can change · 18+
         </div>
       </footer>
