@@ -1,0 +1,460 @@
+"use client"
+
+import { useCallback, useEffect, useMemo, useState } from "react"
+import { recordLockIn } from "@/lib/game-stats"
+
+type OutcomeOpt = {
+  outcomeId: string
+  outcomeDesc: string
+  odds: number
+  probability: number | null
+  snapshotOnly?: boolean
+}
+
+type MarketOpt = {
+  marketId: string
+  marketDesc: string
+  specifier: string | null
+  line: string | null
+  outcomes: OutcomeOpt[]
+}
+
+type Selected = {
+  marketId: string
+  marketDesc: string
+  outcomeId: string
+  outcomeDesc: string
+  specifier: string | null
+  odds: number
+  confidence: number
+  edge: number | null
+  reasoning: string | null
+}
+
+type Leg = {
+  pickId: string
+  eventId: string
+  homeTeam: string
+  awayTeam: string
+  tournament: string | null
+  kickoffAt: string | null
+  selected: Selected
+  markets: MarketOpt[]
+  live: boolean
+}
+
+type SlipMeta = {
+  id: string
+  shareCode: string | null
+  shareUrl: string | null
+  totalOdds: number | null
+  status: string
+  label: string | null
+  bookmaker: string
+  country: string
+  notes: string | null
+  createdAt: string
+}
+
+type DraftLeg = {
+  eventId: string
+  homeTeam: string
+  awayTeam: string
+  tournament: string | null
+  kickoffAt: string | null
+  marketId: string
+  marketDesc: string
+  outcomeId: string
+  outcomeDesc: string
+  specifier: string | null
+  odds: number
+  confidence: number
+  edge: number | null
+  reasoning: string | null
+  markets: MarketOpt[]
+  live: boolean
+  originalKey: string
+}
+
+function selectionKey(s: {
+  marketId: string
+  outcomeId: string
+  specifier: string | null
+}) {
+  return `${s.marketId}|${s.specifier ?? ""}|${s.outcomeId}`
+}
+
+export function SlipViewer({
+  slipId,
+  onClose,
+  onRemixed,
+}: {
+  slipId: string
+  onClose: () => void
+  onRemixed?: (newSlipId: string) => void
+}) {
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [slip, setSlip] = useState<SlipMeta | null>(null)
+  const [draft, setDraft] = useState<DraftLeg[]>([])
+  const [bookmaker, setBookmaker] = useState<"sportybet" | "football">(
+    "sportybet"
+  )
+  const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
+  const [newCode, setNewCode] = useState<string | null>(null)
+  const [copied, setCopied] = useState(false)
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    setError(null)
+    setNewCode(null)
+    setSaveError(null)
+    try {
+      const res = await fetch(`/api/slips/${slipId}?board=1`)
+      const data = await res.json()
+      if (!data.ok) throw new Error(data.error || "Failed to load")
+
+      const s = data.slip
+      setSlip({
+        id: s.id,
+        shareCode: s.shareCode,
+        shareUrl: s.shareUrl,
+        totalOdds: s.totalOdds,
+        status: s.status,
+        label: s.label,
+        bookmaker: s.bookmaker,
+        country: s.country,
+        notes: s.notes,
+        createdAt: s.createdAt,
+      })
+      setBookmaker(
+        s.bookmaker === "football" ? "football" : "sportybet"
+      )
+
+      const legs = (data.legs as Leg[]).map((leg) => ({
+        eventId: leg.eventId,
+        homeTeam: leg.homeTeam,
+        awayTeam: leg.awayTeam,
+        tournament: leg.tournament,
+        kickoffAt: leg.kickoffAt
+          ? typeof leg.kickoffAt === "string"
+            ? leg.kickoffAt
+            : new Date(leg.kickoffAt).toISOString()
+          : null,
+        marketId: leg.selected.marketId,
+        marketDesc: leg.selected.marketDesc,
+        outcomeId: leg.selected.outcomeId,
+        outcomeDesc: leg.selected.outcomeDesc,
+        specifier: leg.selected.specifier,
+        odds: leg.selected.odds,
+        confidence: leg.selected.confidence,
+        edge: leg.selected.edge,
+        reasoning: leg.selected.reasoning,
+        markets: leg.markets,
+        live: leg.live,
+        originalKey: selectionKey(leg.selected),
+      }))
+      setDraft(legs)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load slip")
+    } finally {
+      setLoading(false)
+    }
+  }, [slipId])
+
+  useEffect(() => {
+    void load()
+  }, [load])
+
+  const dirty = useMemo(
+    () =>
+      draft.some(
+        (d) =>
+          selectionKey({
+            marketId: d.marketId,
+            outcomeId: d.outcomeId,
+            specifier: d.specifier,
+          }) !== d.originalKey
+      ),
+    [draft]
+  )
+
+  const combinedOdds = useMemo(
+    () => draft.reduce((acc, d) => acc * d.odds, 1),
+    [draft]
+  )
+
+  function selectOutcome(eventId: string, market: MarketOpt, outcome: OutcomeOpt) {
+    setNewCode(null)
+    setDraft((prev) =>
+      prev.map((leg) => {
+        if (leg.eventId !== eventId) return leg
+        const implied =
+          outcome.probability && outcome.probability > 0
+            ? outcome.probability
+            : 1 / outcome.odds
+        return {
+          ...leg,
+          marketId: market.marketId,
+          marketDesc: market.marketDesc,
+          outcomeId: outcome.outcomeId,
+          outcomeDesc: outcome.outcomeDesc,
+          specifier: market.specifier,
+          odds: outcome.odds,
+          confidence: implied,
+          edge: 0,
+          reasoning: `Edited pick: ${outcome.outcomeDesc} @ ${outcome.odds.toFixed(2)} (${market.marketDesc}).`,
+        }
+      })
+    )
+  }
+
+  async function saveRemix() {
+    if (!slip) return
+    setSaving(true)
+    setSaveError(null)
+    try {
+      const res = await fetch("/api/slips/remix", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sourceSlipId: slip.id,
+          bookmaker,
+          country: slip.country,
+          legs: draft.map((d) => ({
+            eventId: d.eventId,
+            marketId: d.marketId,
+            outcomeId: d.outcomeId,
+            specifier: d.specifier,
+            homeTeam: d.homeTeam,
+            awayTeam: d.awayTeam,
+            tournament: d.tournament,
+            kickoffAt: d.kickoffAt,
+            marketDesc: d.marketDesc,
+            outcomeDesc: d.outcomeDesc,
+            odds: d.odds,
+            impliedProb: 1 / d.odds,
+            confidence: d.confidence,
+            edge: d.edge ?? 0,
+            reasoning: d.reasoning,
+          })),
+        }),
+      })
+      const data = await res.json()
+      if (!data.ok) throw new Error(data.error || "Remix failed")
+      setNewCode(data.slip.shareCode)
+      recordLockIn({
+        legs: data.slip.picks?.length ?? draft.length,
+        totalOdds: data.slip.totalOdds ?? combinedOdds,
+        code: data.slip.shareCode,
+      })
+      onRemixed?.(data.slip.id)
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : "Remix failed")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function copy(text: string) {
+    await navigator.clipboard.writeText(text)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 1200)
+  }
+
+  return (
+    <section className="plate overflow-hidden">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b-3 border-black bg-panel-2 px-4 py-3">
+        <div>
+          <p className="hud-label">REWORK TICKET</p>
+          <h2 className="ticket-code text-2xl">
+            {slip?.shareCode ?? (loading ? "…" : "—")}
+          </h2>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button type="button" onClick={() => void load()} className="btn-chip">
+            REFRESH PRICES
+          </button>
+          <button type="button" onClick={onClose} className="btn-chip">
+            BACK
+          </button>
+        </div>
+      </div>
+
+      {loading && (
+        <p className="px-4 py-8 font-mono text-sm text-mute">
+          LOADING BOARD…
+        </p>
+      )}
+      {error && (
+        <p className="bg-rojo px-4 py-3 text-sm font-semibold text-white" role="alert">
+          {error}
+        </p>
+      )}
+
+      {!loading && !error && slip && (
+        <>
+          <div className="grid gap-0 border-b-3 border-black sm:grid-cols-3">
+            <div className="border-b-3 border-black px-4 py-3 sm:border-b-0 sm:border-r-3">
+              <p className="hud-label">Original combo</p>
+              <p className="stamp text-2xl text-gold">
+                {slip.totalOdds?.toFixed(2) ?? "—"}
+              </p>
+            </div>
+            <div className="border-b-3 border-black px-4 py-3 sm:border-b-0 sm:border-r-3">
+              <p className="hud-label">Draft combo</p>
+              <p className="stamp text-2xl">
+                {combinedOdds.toFixed(2)}
+                {dirty && (
+                  <span className="ml-2 font-mono text-xs text-rojo">EDITED</span>
+                )}
+              </p>
+            </div>
+            <div className="px-4 py-3">
+              <p className="hud-label">Cut for</p>
+              <select
+                value={bookmaker}
+                onChange={(e) =>
+                  setBookmaker(e.target.value as "sportybet" | "football")
+                }
+                className="mt-1 w-full max-w-[200px]"
+              >
+                <option value="football">Football.com</option>
+                <option value="sportybet">SportyBet</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="space-y-3 p-4">
+            {draft.map((leg, idx) => {
+              const currentKey = selectionKey(leg)
+              const changed = currentKey !== leg.originalKey
+              return (
+                <div key={leg.eventId} className="leg-slot p-3">
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div>
+                      <p className="font-mono text-[11px] text-gold">
+                        ROUND {idx + 1}
+                        {changed ? " · SWAPPED" : ""}
+                        {!leg.live ? " · CACHED BOARD" : ""}
+                      </p>
+                      <p className="stamp text-lg leading-tight">
+                        {leg.homeTeam}{" "}
+                        <span className="text-mute font-sans text-sm">VS</span>{" "}
+                        {leg.awayTeam}
+                      </p>
+                      <p className="font-mono text-[11px] text-mute">
+                        {leg.tournament ?? "—"}
+                        {leg.kickoffAt
+                          ? ` · ${new Date(leg.kickoffAt).toLocaleString()}`
+                          : ""}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p className="stamp text-xl text-rojo">{leg.outcomeDesc}</p>
+                      <p className="font-mono text-lg">@{leg.odds.toFixed(2)}</p>
+                    </div>
+                  </div>
+
+                  {leg.markets.length === 0 ? (
+                    <p className="mt-3 font-mono text-xs text-mute">
+                      No alts on the board right now.
+                    </p>
+                  ) : (
+                    <div className="mt-3 space-y-3">
+                      {leg.markets.map((market) => (
+                        <div key={`${market.marketId}-${market.specifier ?? ""}`}>
+                          <p className="hud-label mb-1.5">
+                            {market.marketDesc}
+                            {market.line ? ` (${market.line})` : ""}
+                          </p>
+                          <div className="flex flex-wrap gap-1.5">
+                            {market.outcomes.map((o) => {
+                              const selected =
+                                leg.marketId === market.marketId &&
+                                leg.outcomeId === o.outcomeId &&
+                                (leg.specifier ?? null) ===
+                                  (market.specifier ?? null)
+                              return (
+                                <button
+                                  key={`${market.marketId}-${o.outcomeId}-${o.outcomeDesc}`}
+                                  type="button"
+                                  onClick={() =>
+                                    selectOutcome(leg.eventId, market, o)
+                                  }
+                                  className={
+                                    selected
+                                      ? "border-3 border-black bg-gold px-2.5 py-1.5 text-left font-mono text-xs font-bold text-black shadow-[2px_2px_0_#000]"
+                                      : "btn-chip"
+                                  }
+                                >
+                                  {o.outcomeDesc}{" "}
+                                  <span className="opacity-80">
+                                    {o.odds.toFixed(2)}
+                                  </span>
+                                </button>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+
+          <div className="flex flex-wrap items-center gap-3 border-t-3 border-black bg-panel-2 px-4 py-4">
+            <button
+              type="button"
+              disabled={saving || draft.length === 0}
+              onClick={() => void saveRemix()}
+              className="btn-lock"
+            >
+              {saving
+                ? "CUTTING…"
+                : dirty
+                  ? "LOCK REWORKED CARD"
+                  : "RE-CUT SAME CARD"}
+            </button>
+            {slip.shareCode && (
+              <button
+                type="button"
+                onClick={() => void copy(slip.shareCode!)}
+                className="btn-chip"
+              >
+                {copied ? "COPIED" : "COPY ORIGINAL"}
+              </button>
+            )}
+            {saveError && (
+              <p className="w-full bg-rojo px-3 py-2 text-sm font-semibold text-white">
+                {saveError}
+              </p>
+            )}
+          </div>
+
+          {newCode && (
+            <div className="border-t-3 border-black bg-rojo px-4 py-4">
+              <p className="hud-label text-white/70">New code</p>
+              <div className="mt-1 flex flex-wrap items-center gap-3">
+                <p className="ticket-code text-3xl text-white">{newCode}</p>
+                <button
+                  type="button"
+                  onClick={() => void copy(newCode)}
+                  className="border-3 border-black bg-gold px-3 py-1.5 font-mono text-xs font-bold text-black"
+                >
+                  COPY
+                </button>
+              </div>
+              <p className="mt-2 font-mono text-[11px] text-white/80">
+                Fresh ticket in REPLAYS. Original stays put.
+              </p>
+            </div>
+          )}
+        </>
+      )}
+    </section>
+  )
+}

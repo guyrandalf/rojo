@@ -1,0 +1,95 @@
+// Rojo - AI football booking code generator
+// Prisma 7: url lives in prisma.config.ts, client uses driver adapter.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum SlipStatus {
+  DRAFT
+  CODED
+  STAKED
+  WON
+  LOST
+  VOID
+  EXPIRED
+}
+
+enum MarketKind {
+  MATCH_RESULT // 1X2
+  DOUBLE_CHANCE
+  OVER_UNDER
+  BTTS
+  OTHER
+}
+
+model ForecastRun {
+  id          String   @id @default(cuid())
+  createdAt   DateTime @default(now())
+  country     String   @default("ng")
+  legCount    Int
+  minOdds     Float?
+  maxOdds     Float?
+  strategy    String   @default("highest_confidence")
+  modelNotes  String?
+  aiEnabled   Boolean  @default(false)
+
+  slips BetSlip[]
+}
+
+model BetSlip {
+  id            String     @id @default(cuid())
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+  status        SlipStatus @default(DRAFT)
+  label         String?
+  totalOdds     Float?
+  combinedConf  Float?
+  shareCode     String?
+  shareUrl      String?
+  bookmaker     String     @default("sportybet")
+  country       String     @default("ng")
+  forecastRunId String?
+  notes         String?
+
+  forecastRun ForecastRun? @relation(fields: [forecastRunId], references: [id], onDelete: SetNull)
+  picks       Pick[]
+
+  @@index([createdAt])
+  @@index([shareCode])
+  @@index([status])
+}
+
+model Pick {
+  id             String     @id @default(cuid())
+  createdAt      DateTime   @default(now())
+  betSlipId      String
+  eventId        String
+  gameId         String?
+  homeTeam       String
+  awayTeam       String
+  tournament     String?
+  kickoffAt      DateTime?
+  marketId       String
+  marketDesc     String
+  marketKind     MarketKind @default(MATCH_RESULT)
+  outcomeId      String
+  outcomeDesc    String
+  specifier      String?
+  odds           Float
+  impliedProb    Float
+  confidence     Float
+  edge           Float?
+  reasoning      String?
+  sourceOdds     Json?
+
+  betSlip BetSlip @relation(fields: [betSlipId], references: [id], onDelete: Cascade)
+
+  @@index([betSlipId])
+  @@index([eventId])
+}

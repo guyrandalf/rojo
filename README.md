@@ -1,36 +1,65 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Rojo
 
-## Getting Started
+Football multi builder that:
 
-First, run the development server:
+1. Pulls live upcoming fixtures/odds from SportyBet
+2. Fits a **Poisson goals model** from de-vigged 1X2 + Over/Under lines
+3. Enriches shortlisted matches with **recent form / H2H** (TheSportsDB, best-effort)
+4. Builds a **research shortlist** ranked by model edge
+5. With `XAI_API_KEY`, **Grok chooses the final legs and writes full reasons** before any booking code
+6. Without a key, falls back to stats ranking with plain-English stats reasons
+7. Creates a real **booking code** on SportyBet or Football.com
+8. Stores slip history in local Postgres
+
+SportyBet and Football.com share Sporty Group booking-code infrastructure. Codes work across both brands.
+
+## Stack
+
+- Next.js 16 (App Router) + React 19 + Tailwind CSS v4
+- Prisma 7 + PostgreSQL (`postgresql://postgres@localhost:5432/rojo`)
+- Vercel AI SDK + `@ai-sdk/xai` (optional)
+
+## Setup
 
 ```bash
+cd Software/Snowflakes/rojo
+cp .env.example .env   # already set for local Postgres
+npm install
+npx prisma generate
+npx prisma db push
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Optional: set `XAI_API_KEY` in `.env` for richer pick explanations.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## API
 
-## Learn More
+| Method | Path | Purpose |
+|--------|------|---------|
+| `GET` | `/api/fixtures` | Live upcoming events + markets |
+| `POST` | `/api/forecast` | Score, pick legs, create code, persist |
+| `GET` | `/api/slips` | Recent slips |
+| `GET/PATCH` | `/api/slips/[id]` | Detail / regenerate code / status |
+| `POST` | `/api/booking-codes/load` | Load an existing share code |
 
-To learn more about Next.js, take a look at the following resources:
+### Forecast body example
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```json
+{
+  "legCount": 5,
+  "minOdds": 1.3,
+  "maxOdds": 2.2,
+  "bookmaker": "sportybet",
+  "createCode": true,
+  "useAi": true
+}
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Notes
 
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- Booking codes save a slip. They do **not** place a bet.
+- Endpoints are the same public website APIs the SportyBet UI uses. They can change or rate-limit.
+- Model output is highest-confidence ranking, not a guarantee. Multi-leg risk compounds.
+- 18+. Bet responsibly.
