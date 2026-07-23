@@ -267,17 +267,17 @@ export function SlipViewer({
     <section className="plate overflow-hidden">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b-3 border-black bg-panel-2 px-4 py-3">
         <div>
-          <p className="hud-label">REWORK TICKET</p>
-          <h2 className="ticket-code text-2xl">
+          <p className="hud-label text-base">Change this ticket</p>
+          <h2 className="ticket-code text-3xl">
             {slip?.shareCode ?? (loading ? "…" : "—")}
           </h2>
         </div>
         <div className="flex flex-wrap gap-2">
           <button type="button" onClick={() => void load()} className="btn-chip">
-            REFRESH PRICES
+            Refresh odds
           </button>
           <button type="button" onClick={onClose} className="btn-chip">
-            BACK
+            Go back
           </button>
         </div>
       </div>
@@ -296,29 +296,29 @@ export function SlipViewer({
       {!loading && !error && slip && (
         <>
           <div className="grid gap-0 border-b-3 border-black sm:grid-cols-3">
-            <div className="border-b-3 border-black px-4 py-3 sm:border-b-0 sm:border-r-3">
-              <p className="hud-label">Original combo</p>
-              <p className="stamp text-2xl text-gold">
+            <div className="border-b-3 border-black px-4 py-4 sm:border-b-0 sm:border-r-3">
+              <p className="hud-label text-base">Old total odds</p>
+              <p className="stamp text-3xl text-gold">
                 {slip.totalOdds?.toFixed(2) ?? "—"}
               </p>
             </div>
-            <div className="border-b-3 border-black px-4 py-3 sm:border-b-0 sm:border-r-3">
-              <p className="hud-label">Draft combo</p>
-              <p className="stamp text-2xl">
+            <div className="border-b-3 border-black px-4 py-4 sm:border-b-0 sm:border-r-3">
+              <p className="hud-label text-base">New total odds</p>
+              <p className="stamp text-3xl">
                 {combinedOdds.toFixed(2)}
                 {dirty && (
-                  <span className="ml-2 font-mono text-xs text-rojo">EDITED</span>
+                  <span className="ml-2 text-sm font-bold text-rojo">changed</span>
                 )}
               </p>
             </div>
-            <div className="px-4 py-3">
-              <p className="hud-label">Cut for</p>
+            <div className="px-4 py-4">
+              <p className="hud-label text-base">Betting site</p>
               <select
                 value={bookmaker}
                 onChange={(e) =>
                   setBookmaker(e.target.value as "sportybet" | "football")
                 }
-                className="mt-1 w-full max-w-[200px]"
+                className="mt-1 w-full max-w-[220px]"
               >
                 <option value="football">Football.com</option>
                 <option value="sportybet">SportyBet</option>
@@ -334,14 +334,14 @@ export function SlipViewer({
                 <div key={leg.eventId} className="leg-slot p-3">
                   <div className="flex flex-wrap items-start justify-between gap-2">
                     <div>
-                      <p className="font-mono text-[11px] text-gold">
-                        ROUND {idx + 1}
-                        {changed ? " · SWAPPED" : ""}
-                        {!leg.live ? " · CACHED BOARD" : ""}
+                      <p className="text-sm font-bold text-gold">
+                        Game {idx + 1}
+                        {changed ? " · you changed this" : ""}
+                        {!leg.live ? " · old prices" : ""}
                       </p>
-                      <p className="stamp text-lg leading-tight">
+                      <p className="stamp text-xl leading-tight sm:text-2xl">
                         {leg.homeTeam}{" "}
-                        <span className="text-mute font-sans text-sm">VS</span>{" "}
+                        <span className="font-sans text-base text-mute">vs</span>{" "}
                         {leg.awayTeam}
                       </p>
                       <p className="font-mono text-[11px] text-mute">
@@ -414,10 +414,10 @@ export function SlipViewer({
               className="btn-lock"
             >
               {saving
-                ? "CUTTING…"
+                ? "Making code…"
                 : dirty
-                  ? "LOCK REWORKED CARD"
-                  : "RE-CUT SAME CARD"}
+                  ? "Get new booking code"
+                  : "Get same code again"}
             </button>
             {slip.shareCode && (
               <button
@@ -425,7 +425,7 @@ export function SlipViewer({
                 onClick={() => void copy(slip.shareCode!)}
                 className="btn-chip"
               >
-                {copied ? "COPIED" : "COPY ORIGINAL"}
+                {copied ? "Copied!" : "Copy old code"}
               </button>
             )}
             {saveError && (
@@ -437,19 +437,19 @@ export function SlipViewer({
 
           {newCode && (
             <div className="border-t-3 border-black bg-rojo px-4 py-4">
-              <p className="hud-label text-white/70">New code</p>
+              <p className="text-base font-bold text-white/80">New booking code</p>
               <div className="mt-1 flex flex-wrap items-center gap-3">
-                <p className="ticket-code text-3xl text-white">{newCode}</p>
+                <p className="ticket-code text-4xl text-white">{newCode}</p>
                 <button
                   type="button"
                   onClick={() => void copy(newCode)}
-                  className="border-3 border-black bg-gold px-3 py-1.5 font-mono text-xs font-bold text-black"
+                  className="border-3 border-black bg-gold px-4 py-2 text-base font-bold text-black"
                 >
-                  COPY
+                  Copy code
                 </button>
               </div>
-              <p className="mt-2 font-mono text-[11px] text-white/80">
-                Fresh ticket in REPLAYS. Original stays put.
+              <p className="mt-2 text-sm font-semibold text-white/85">
+                New code is under My codes. Old one is still there.
               </p>
             </div>
           )}

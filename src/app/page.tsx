@@ -14,22 +14,22 @@ export default function HomePage() {
   return (
     <div className="min-h-screen text-ink">
       <header className="border-b-4 border-black bg-panel">
-        <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6">
+        <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-4 sm:px-6">
           <div className="flex items-center gap-3">
-            <span className="stamp bg-rojo px-2 py-1 text-xl text-white shadow-[3px_3px_0_#000]">
+            <span className="stamp bg-rojo px-3 py-1.5 text-2xl text-white shadow-[3px_3px_0_#000]">
               ROJO
             </span>
             <div>
-              <p className="stamp text-lg leading-none tracking-wide">
-                MATCHDAY DESK
+              <p className="stamp text-xl leading-none tracking-wide sm:text-2xl">
+                BETTING DESK
               </p>
-              <p className="font-mono text-[11px] text-mute">
-                LOCK A MULTI · LOAD THE CODE
+              <p className="mt-1 text-sm font-semibold text-mute">
+                Pick games · Get booking code
               </p>
             </div>
           </div>
-          <p className="border-2 border-black bg-black px-2 py-1 font-mono text-[11px] text-gold">
-            18+ ONLY · PLAY SMART
+          <p className="border-2 border-black bg-black px-3 py-1.5 text-sm font-bold text-gold">
+            18+ only · Bet wise
           </p>
         </div>
       </header>
@@ -37,19 +37,19 @@ export default function HomePage() {
       <main className="mx-auto max-w-6xl space-y-5 px-4 py-6 sm:px-6 sm:py-8">
         <MatchdayHud bump={hudBump} />
 
-        <div className="plate p-4 sm:p-5">
-          <h1 className="stamp text-3xl leading-none text-ink sm:text-4xl">
-            BUILD THE CARD.
-            <span className="block text-rojo">TAKE THE CODE.</span>
+        <div className="plate p-5 sm:p-6">
+          <h1 className="stamp text-4xl leading-none text-ink sm:text-5xl">
+            MAKE YOUR TICKET.
+            <span className="block text-rojo">GET THE CODE.</span>
           </h1>
-          <p className="mt-3 max-w-2xl text-sm text-mute">
-            Scan the board, stack short-price legs across your dates, lock the
-            multi, walk out with a booking code for SportyBet or Football.com.
-            Tap a recent ticket to rework legs and cut a fresh code.
+          <p className="mt-4 max-w-2xl text-base font-medium leading-relaxed text-mute sm:text-lg">
+            Choose how many games, which days, and how strong the picks should
+            be. We give you a booking code for SportyBet or Football.com. Open
+            any old code on the right to change games and get a new code.
           </p>
         </div>
 
-        <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_300px] lg:items-start">
+        <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-start">
           <div className="min-w-0 space-y-5">
             {selectedSlipId ? (
               <SlipViewer
@@ -79,8 +79,8 @@ export default function HomePage() {
       </main>
 
       <footer className="border-t-4 border-black bg-panel">
-        <div className="mx-auto max-w-6xl px-4 py-3 font-mono text-[11px] text-dim sm:px-6">
-          NOT WITH SPORTY GROUP · PRICES MOVE · 18+
+        <div className="mx-auto max-w-6xl px-4 py-4 text-sm font-semibold text-dim sm:px-6">
+          Not Sporty company · Odds can change · 18+
         </div>
       </footer>
     </div>

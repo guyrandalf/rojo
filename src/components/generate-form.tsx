@@ -137,7 +137,7 @@ export function GenerateForm({ onCreated }: { onCreated?: () => void }) {
         data = (await res.json()) as ForecastResponse
       } catch {
         throw new Error(
-          res.ok ? "Bad response from desk" : `Desk offline (${res.status})`
+          res.ok ? "Bad answer from server" : `Server not running (${res.status})`
         )
       }
 
@@ -145,7 +145,7 @@ export function GenerateForm({ onCreated }: { onCreated?: () => void }) {
         throw new Error(
           typeof data.error === "string"
             ? data.error
-            : `Lock failed (${res.status})`
+            : `Could not make code (${res.status})`
         )
       }
 
@@ -168,7 +168,7 @@ export function GenerateForm({ onCreated }: { onCreated?: () => void }) {
       onCreated?.()
     } catch (err) {
       setPhase("idle")
-      setError(err instanceof Error ? err.message : "Something broke")
+      setError(err instanceof Error ? err.message : "Something went wrong")
     } finally {
       window.clearTimeout(scanTimer)
       setLoading(false)
@@ -184,25 +184,25 @@ export function GenerateForm({ onCreated }: { onCreated?: () => void }) {
 
   const phaseLabel =
     phase === "scan"
-      ? "SCANNING BOARD…"
+      ? "Looking for games…"
       : phase === "stack"
-        ? "STACKING LEGS…"
+        ? "Adding games…"
         : phase === "lock"
-          ? "CARD LOCKED"
-          : "READY"
+          ? "Code ready"
+          : "Ready"
 
   return (
     <div className="min-w-0 space-y-5">
       <form onSubmit={onSubmit} className="plate overflow-hidden">
-        <div className="flex items-center justify-between border-b-3 border-black bg-panel-2 px-4 py-3">
-          <h2 className="stamp text-xl">SETUP</h2>
-          <span className="border-2 border-black bg-black px-2 py-0.5 font-mono text-[11px] text-gold">
-            {bookmaker === "sportybet" ? "SPORTY" : "FOOTBALL.COM"}
+        <div className="flex items-center justify-between border-b-3 border-black bg-panel-2 px-4 py-4">
+          <h2 className="stamp text-2xl sm:text-3xl">Choose your ticket</h2>
+          <span className="border-2 border-black bg-black px-2 py-1 text-sm font-bold text-gold">
+            {bookmaker === "sportybet" ? "SportyBet" : "Football.com"}
           </span>
         </div>
 
         <div className="grid gap-0 sm:grid-cols-2 lg:grid-cols-4">
-          <Field label="Legs">
+          <Field label="How many games">
             <input
               type="number"
               min={2}
@@ -211,7 +211,7 @@ export function GenerateForm({ onCreated }: { onCreated?: () => void }) {
               onChange={(e) => setLegCount(Number(e.target.value))}
             />
           </Field>
-          <Field label="Floor %">
+          <Field label="How strong (min %)">
             <input
               type="number"
               min={50}
@@ -221,7 +221,7 @@ export function GenerateForm({ onCreated }: { onCreated?: () => void }) {
               onChange={(e) => setMinChancePct(Number(e.target.value))}
             />
           </Field>
-          <Field label="Min price">
+          <Field label="Smallest odds">
             <input
               type="number"
               step="0.05"
@@ -230,7 +230,7 @@ export function GenerateForm({ onCreated }: { onCreated?: () => void }) {
               onChange={(e) => setMinOdds(Number(e.target.value))}
             />
           </Field>
-          <Field label="Max price">
+          <Field label="Biggest odds">
             <input
               type="number"
               step="0.05"
@@ -242,21 +242,21 @@ export function GenerateForm({ onCreated }: { onCreated?: () => void }) {
         </div>
 
         <div className="grid gap-0 border-t-3 border-black sm:grid-cols-2 lg:grid-cols-3">
-          <Field label="From">
+          <Field label="From which day">
             <input
               type="date"
               value={dateFrom}
               onChange={(e) => setDateFrom(e.target.value)}
             />
           </Field>
-          <Field label="To">
+          <Field label="To which day">
             <input
               type="date"
               value={dateTo}
               onChange={(e) => setDateTo(e.target.value)}
             />
           </Field>
-          <Field label="Book">
+          <Field label="Betting site">
             <select
               value={bookmaker}
               onChange={(e) =>
@@ -269,14 +269,14 @@ export function GenerateForm({ onCreated }: { onCreated?: () => void }) {
           </Field>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2 border-t-3 border-black px-4 py-3">
-          <span className="hud-label mr-1">Window</span>
+        <div className="flex flex-wrap items-center gap-2 border-t-3 border-black px-4 py-4">
+          <span className="hud-label mr-1">Quick days:</span>
           {(
             [
               ["today", "Today"],
               ["weekend", "Weekend"],
               ["3d", "3 days"],
-              ["7d", "Week"],
+              ["7d", "1 week"],
             ] as const
           ).map(([key, label]) => (
             <button
@@ -290,32 +290,36 @@ export function GenerateForm({ onCreated }: { onCreated?: () => void }) {
           ))}
         </div>
 
-        <div className="border-t-3 border-black px-4 py-3">
-          <label className="flex cursor-pointer items-start gap-3 text-sm text-mute">
+        <div className="border-t-3 border-black px-4 py-4">
+          <label className="flex cursor-pointer items-start gap-3 text-base text-mute">
             <input
               type="checkbox"
               checked={useCoach}
               onChange={(e) => setUseCoach(e.target.checked)}
-              className="mt-1 h-4 w-4 accent-rojo"
+              className="mt-1 h-5 w-5 accent-rojo"
             />
             <span>
-              <span className="font-semibold text-ink">Coach assist</span>
-              <span className="mt-0.5 block text-mute">
-                Optional second pass on the shortlist. Off = pure board scan +
-                ranking. Needs a key in env if you flip it on.
+              <span className="text-lg font-bold text-ink">
+                Help me pick better
+              </span>
+              <span className="mt-1 block text-base text-mute">
+                Extra help on top of normal search. Leave off if you just want
+                the code. (Needs special key on the server if you turn it on.)
               </span>
             </span>
           </label>
         </div>
 
-        <div className="flex flex-wrap items-center gap-4 border-t-3 border-black bg-panel-2 px-4 py-4">
+        <div className="flex flex-wrap items-center gap-4 border-t-3 border-black bg-panel-2 px-4 py-5">
           <button type="submit" disabled={loading} className="btn-lock">
-            {loading ? phaseLabel : `LOCK ${legCount}-LEG CARD`}
+            {loading
+              ? phaseLabel
+              : `Get booking code (${legCount} games)`}
           </button>
-          <div className="min-w-[140px] flex-1">
-            <p className="hud-label">Status</p>
-            <p className="font-mono text-sm text-gold">{phaseLabel}</p>
-            <div className="meter mt-1 max-w-xs">
+          <div className="min-w-[160px] flex-1">
+            <p className="hud-label">Now doing</p>
+            <p className="text-lg font-bold text-gold">{phaseLabel}</p>
+            <div className="meter mt-2 max-w-xs">
               <span
                 style={{
                   width:
@@ -331,7 +335,7 @@ export function GenerateForm({ onCreated }: { onCreated?: () => void }) {
             </div>
           </div>
           {error && (
-            <p className="w-full border-3 border-black bg-rojo px-3 py-2 text-sm font-semibold text-white">
+            <p className="w-full border-3 border-black bg-rojo px-3 py-3 text-base font-bold text-white">
               {error}
             </p>
           )}
@@ -342,58 +346,59 @@ export function GenerateForm({ onCreated }: { onCreated?: () => void }) {
         <section className="plate overflow-hidden">
           <div className="relative grid gap-0 border-b-3 border-black lg:grid-cols-[1fr_auto]">
             <div className="scanlines absolute inset-0 opacity-40" />
-            <div className="relative px-4 py-4">
+            <div className="relative px-4 py-5 sm:px-5">
               <p className="hud-label">
-                {result.label ?? "CARD"} · {result.status}
-                {result.picks.length}-LEG
+                Your ticket · {result.picks.length} games
               </p>
-              <div className="mt-2 flex flex-wrap items-end gap-6">
+              <div className="mt-3 flex flex-wrap items-end gap-8">
                 <div>
-                  <p className="hud-label">Combo</p>
-                  <p className="stamp text-4xl text-gold leading-none">
+                  <p className="hud-label">Total odds</p>
+                  <p className="stamp text-5xl leading-none text-gold">
                     {result.totalOdds?.toFixed(2) ?? "—"}
                   </p>
                 </div>
                 <div>
-                  <p className="hud-label">Joint hit rate</p>
-                  <p className="font-mono text-xl">
+                  <p className="hud-label">Chance all win</p>
+                  <p className="font-mono text-2xl font-bold">
                     {((result.combinedConf ?? 0) * 100).toFixed(1)}%
                   </p>
                 </div>
               </div>
               {meta && (
-                <p className="mt-3 font-mono text-[11px] text-mute">
-                  {meta.dateFrom} → {meta.dateTo}
+                <p className="mt-4 text-sm font-semibold text-mute">
+                  Days: {meta.dateFrom} → {meta.dateTo}
                   {meta.minConfidence != null
-                    ? ` · floor ${(meta.minConfidence * 100).toFixed(0)}%`
+                    ? ` · Strong from ${(meta.minConfidence * 100).toFixed(0)}%`
                     : ""}
-                  {` · scanned ${meta.events} · kept ${meta.candidates}`}
+                  {` · Checked ${meta.events} matches · Kept ${meta.candidates}`}
                 </p>
               )}
             </div>
 
             {result.shareCode && (
-              <div className="relative border-t-3 border-black bg-rojo px-4 py-4 lg:min-w-[240px] lg:border-l-3 lg:border-t-0">
-                <p className="hud-label text-white/70">Your code</p>
-                <p className="ticket-code mt-1 text-3xl text-white">
+              <div className="relative border-t-3 border-black bg-rojo px-5 py-5 lg:min-w-[260px] lg:border-l-3 lg:border-t-0">
+                <p className="text-base font-bold text-white/80">
+                  Booking code
+                </p>
+                <p className="ticket-code mt-2 text-4xl text-white">
                   {result.shareCode}
                 </p>
-                <div className="mt-3 flex gap-2">
+                <div className="mt-4 flex flex-wrap gap-2">
                   <button
                     type="button"
                     onClick={copyCode}
-                    className="border-3 border-black bg-gold px-3 py-1.5 font-mono text-xs font-bold text-black shadow-[2px_2px_0_#000]"
+                    className="border-3 border-black bg-gold px-4 py-2 text-base font-bold text-black shadow-[2px_2px_0_#000]"
                   >
-                    {copied ? "COPIED" : "COPY"}
+                    {copied ? "Copied!" : "Copy code"}
                   </button>
                   {result.shareUrl && (
                     <a
                       href={result.shareUrl.replace(/^http:/, "https:")}
                       target="_blank"
                       rel="noreferrer"
-                      className="border-3 border-black bg-black px-3 py-1.5 font-mono text-xs font-bold text-white"
+                      className="border-3 border-black bg-black px-4 py-2 text-base font-bold text-white"
                     >
-                      OPEN BOOK
+                      Open site
                     </a>
                   )}
                 </div>
@@ -402,26 +407,26 @@ export function GenerateForm({ onCreated }: { onCreated?: () => void }) {
           </div>
 
           {result.notes && (
-            <div className="border-b-3 border-black px-4 py-3 font-mono text-xs text-mute">
+            <div className="border-b-3 border-black px-4 py-3 text-sm text-mute sm:px-5">
               {result.notes}
             </div>
           )}
 
-          <div className="space-y-3 p-4">
-            <p className="stamp text-lg text-mute">LEG SLOTS</p>
+          <div className="space-y-3 p-4 sm:p-5">
+            <p className="stamp text-xl text-mute">Your games</p>
             {result.picks.map((p, i) => (
-              <div key={p.id} className="leg-slot p-3">
-                <div className="flex flex-wrap items-start justify-between gap-2">
-                  <div>
-                    <p className="font-mono text-[11px] text-gold">
-                      ROUND {i + 1}
+              <div key={p.id} className="leg-slot p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-sm font-bold text-gold">
+                      Game {i + 1}
                     </p>
-                    <p className="stamp text-lg leading-tight">
+                    <p className="stamp text-xl leading-tight sm:text-2xl">
                       {p.homeTeam}{" "}
-                      <span className="text-mute font-sans text-sm">VS</span>{" "}
+                      <span className="font-sans text-base text-mute">vs</span>{" "}
                       {p.awayTeam}
                     </p>
-                    <p className="mt-0.5 font-mono text-[11px] text-mute">
+                    <p className="mt-1 text-sm font-semibold text-mute">
                       {p.tournament ?? "—"}
                       {p.kickoffAt
                         ? ` · ${new Date(p.kickoffAt).toLocaleString()}`
@@ -429,20 +434,20 @@ export function GenerateForm({ onCreated }: { onCreated?: () => void }) {
                     </p>
                   </div>
                   <div className="text-right">
-                    <p className="stamp text-xl text-rojo">{p.outcomeDesc}</p>
-                    <p className="font-mono text-lg tabular-nums">
+                    <p className="stamp text-2xl text-rojo">{p.outcomeDesc}</p>
+                    <p className="font-mono text-xl font-bold tabular-nums">
                       @{p.odds.toFixed(2)}
                     </p>
-                    <p className="font-mono text-xs text-gold">
-                      {(p.confidence * 100).toFixed(0)}% HIT
+                    <p className="text-sm font-bold text-gold">
+                      {(p.confidence * 100).toFixed(0)}% sure
                     </p>
                   </div>
                 </div>
-                <p className="mt-2 font-mono text-[11px] uppercase text-dim">
+                <p className="mt-2 text-sm font-semibold uppercase text-dim">
                   {p.marketDesc}
                 </p>
                 {p.reasoning && (
-                  <p className="mt-2 border-l-4 border-rojo pl-3 text-sm text-mute">
+                  <p className="mt-3 border-l-4 border-rojo pl-3 text-base leading-relaxed text-mute">
                     {p.reasoning}
                   </p>
                 )}
@@ -450,9 +455,9 @@ export function GenerateForm({ onCreated }: { onCreated?: () => void }) {
             ))}
           </div>
 
-          <p className="border-t-3 border-black px-4 py-3 font-mono text-[11px] text-dim">
-            SHORT PRICES STILL LOSE. MULTI RISK STACKS. CHECK THE BOOK BEFORE
-            YOU STAKE.
+          <p className="border-t-3 border-black px-4 py-4 text-sm font-semibold text-dim sm:px-5">
+            Even strong picks can lose. Many games together is harder. Check the
+            site before you put money.
           </p>
         </section>
       )}
@@ -468,8 +473,8 @@ function Field({
   children: React.ReactNode
 }) {
   return (
-    <label className="block border-b-3 border-black px-4 py-3 sm:border-r-3 lg:border-b-0">
-      <span className="hud-label mb-1.5 block">{label}</span>
+    <label className="block border-b-3 border-black px-4 py-4 sm:border-r-3 lg:border-b-0">
+      <span className="hud-label mb-2 block text-base">{label}</span>
       {children}
     </label>
   )

@@ -56,22 +56,22 @@ export function SlipHistory({
 
   return (
     <aside className="plate lg:sticky lg:top-4">
-      <div className="flex items-center justify-between border-b-3 border-black bg-panel-2 px-3 py-3">
-        <h2 className="stamp text-lg">REPLAYS</h2>
+      <div className="flex items-center justify-between border-b-3 border-black bg-panel-2 px-4 py-4">
+        <h2 className="stamp text-xl sm:text-2xl">My codes</h2>
         <button type="button" onClick={() => void load()} className="btn-chip">
-          {loading ? "…" : "REFRESH"}
+          {loading ? "…" : "Refresh"}
         </button>
       </div>
 
       {error && (
-        <p className="bg-rojo px-3 py-2 text-sm font-semibold text-white">
+        <p className="bg-rojo px-4 py-3 text-base font-bold text-white">
           {error}
         </p>
       )}
 
       {!loading && slips.length === 0 && (
-        <p className="px-3 py-6 font-mono text-sm text-mute">
-          No tickets yet. Lock one.
+        <p className="px-4 py-8 text-base font-semibold text-mute">
+          No code yet. Make one on the left.
         </p>
       )}
 
@@ -85,8 +85,8 @@ export function SlipHistory({
                 onClick={() => onSelect?.(s.id)}
                 className={
                   active
-                    ? "w-full bg-rojo px-3 py-3 text-left text-white"
-                    : "w-full bg-panel px-3 py-3 text-left hover:bg-panel-2"
+                    ? "w-full bg-rojo px-4 py-4 text-left text-white"
+                    : "w-full bg-panel px-4 py-4 text-left hover:bg-panel-2"
                 }
               >
                 <div className="flex items-start justify-between gap-2">
@@ -94,8 +94,8 @@ export function SlipHistory({
                     <p
                       className={
                         active
-                          ? "font-mono text-sm font-bold tracking-widest text-white"
-                          : "ticket-code text-sm"
+                          ? "font-mono text-lg font-bold tracking-widest text-white"
+                          : "ticket-code text-lg"
                       }
                     >
                       {s.shareCode ?? "—"}
@@ -103,8 +103,8 @@ export function SlipHistory({
                     <p
                       className={
                         active
-                          ? "mt-0.5 font-mono text-[10px] text-white/70"
-                          : "mt-0.5 font-mono text-[10px] text-mute"
+                          ? "mt-1 text-sm font-semibold text-white/80"
+                          : "mt-1 text-sm font-semibold text-mute"
                       }
                     >
                       #{String(slips.length - idx).padStart(2, "0")} ·{" "}
@@ -114,8 +114,8 @@ export function SlipHistory({
                   <p
                     className={
                       active
-                        ? "font-mono text-sm font-bold tabular-nums"
-                        : "font-mono text-sm tabular-nums text-gold"
+                        ? "font-mono text-lg font-bold tabular-nums"
+                        : "font-mono text-lg font-bold tabular-nums text-gold"
                     }
                   >
                     {s.totalOdds?.toFixed(2) ?? "—"}
@@ -124,8 +124,8 @@ export function SlipHistory({
                 <p
                   className={
                     active
-                      ? "mt-2 line-clamp-2 font-mono text-[11px] text-white/80"
-                      : "mt-2 line-clamp-2 font-mono text-[11px] text-mute"
+                      ? "mt-2 line-clamp-3 text-sm font-medium text-white/85"
+                      : "mt-2 line-clamp-3 text-sm font-medium text-mute"
                   }
                 >
                   {s.picks
@@ -137,8 +137,8 @@ export function SlipHistory({
           )
         })}
       </ul>
-      <p className="border-t-3 border-black px-3 py-2 font-mono text-[10px] text-dim">
-        TAP A CODE TO REWORK LEGS
+      <p className="border-t-3 border-black px-4 py-3 text-sm font-bold text-dim">
+        Tap a code to change games
       </p>
     </aside>
   )

@@ -42,8 +42,8 @@ body {
   background: var(--pitch);
   color: var(--ink);
   font-family: var(--font-sans);
-  font-size: 15px;
-  line-height: 1.4;
+  font-size: 17px;
+  line-height: 1.45;
   -webkit-font-smoothing: antialiased;
 }
 
@@ -81,10 +81,11 @@ select {
   border: 3px solid #000;
   background: #0a0a0a;
   color: var(--ink);
-  padding: 0.65rem 0.7rem;
+  padding: 0.85rem 0.9rem;
   box-shadow: inset 2px 2px 0 #000;
   font-family: var(--font-mono);
-  font-size: 14px;
+  font-size: 18px;
+  min-height: 3rem;
 }
 
 input:focus,
@@ -123,10 +124,10 @@ button:disabled {
   border: 3px solid #000;
   box-shadow: var(--hard-shadow);
   font-family: var(--font-display);
-  letter-spacing: 0.06em;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
-  font-size: 1.15rem;
-  padding: 0.85rem 1.25rem;
+  font-size: 1.35rem;
+  padding: 1rem 1.5rem;
   transition: transform 0.05s, box-shadow 0.05s;
 }
 
@@ -145,10 +146,11 @@ button:disabled {
   color: var(--ink);
   border: 3px solid #000;
   box-shadow: var(--hard-shadow-sm);
-  font-family: var(--font-mono);
-  font-size: 12px;
-  padding: 0.4rem 0.65rem;
-  text-transform: uppercase;
+  font-family: var(--font-sans);
+  font-weight: 700;
+  font-size: 14px;
+  padding: 0.55rem 0.85rem;
+  text-transform: none;
 }
 
 .btn-chip:hover {
@@ -167,11 +169,12 @@ button:disabled {
 }
 
 .hud-label {
-  font-family: var(--font-mono);
-  font-size: 10px;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--mute);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: none;
+  color: #c8c8c8;
 }
 
 .ticket-code {
