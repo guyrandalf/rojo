@@ -16,12 +16,17 @@ export default function HomePage() {
       <header className="border-b-4 border-black bg-panel">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-4 sm:px-6">
           <div className="flex items-center gap-3">
-            <span className="stamp bg-rojo px-3 py-1.5 text-2xl text-white shadow-[3px_3px_0_#000]">
-              PLAY ROJO
-            </span>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src="/brand/mark.svg"
+              alt="Play Rojo"
+              width={52}
+              height={52}
+              className="h-12 w-12 border-3 border-black shadow-[3px_3px_0_#000] sm:h-14 sm:w-14"
+            />
             <div>
               <p className="stamp text-xl leading-none tracking-wide sm:text-2xl">
-                BETTING DESK
+                PLAY ROJO
               </p>
               <p className="mt-1 text-sm font-semibold text-mute">
                 Pick games · Get booking code

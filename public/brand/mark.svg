@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="Play Rojo">
+  <rect width="128" height="128" fill="#0e0e0e"/>
+  <rect x="18" y="18" width="100" height="100" fill="#000"/>
+  <rect x="12" y="12" width="100" height="100" fill="#e10600" stroke="#000" stroke-width="6"/>
+  <text x="62" y="86" text-anchor="middle" font-family="Impact, Arial Black, sans-serif" font-size="72" font-weight="700" fill="#ffffff">R</text>
+  <rect x="32" y="94" width="60" height="8" fill="#e8b923"/>
+</svg>

@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 160" role="img" aria-label="Play Rojo">
+  <rect width="640" height="160" fill="#0e0e0e"/>
+  <!-- stamp -->
+  <g transform="translate(24,24)">
+    <rect x="6" y="6" width="112" height="112" fill="#000000"/>
+    <rect x="0" y="0" width="112" height="112" fill="#e10600" stroke="#000" stroke-width="6"/>
+    <text x="56" y="82" text-anchor="middle" font-family="Impact, Arial Black, sans-serif" font-size="78" font-weight="700" fill="#ffffff">R</text>
+    <rect x="22" y="94" width="68" height="8" fill="#e8b923"/>
+  </g>
+  <!-- wordmark -->
+  <text x="160" y="98" font-family="Impact, Arial Black, sans-serif" font-size="72" letter-spacing="2" fill="#f2f2f2">PLAY ROJO</text>
+  <rect x="160" y="112" width="280" height="6" fill="#e8b923"/>
+</svg>
