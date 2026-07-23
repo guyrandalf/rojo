@@ -1,4 +1,4 @@
-// Rojo - AI football booking code generator
+// Play Rojo - football booking code desk
 // Prisma 7: url lives in prisma.config.ts, client uses driver adapter.
 
 generator client {

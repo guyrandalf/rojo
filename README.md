@@ -1,65 +1,80 @@
-# Rojo
+# Play Rojo
 
-Football multi builder that:
+Betting desk that:
 
-1. Pulls live upcoming fixtures/odds from SportyBet
-2. Fits a **Poisson goals model** from de-vigged 1X2 + Over/Under lines
-3. Enriches shortlisted matches with **recent form / H2H** (TheSportsDB, best-effort)
-4. Builds a **research shortlist** ranked by model edge
-5. With `XAI_API_KEY`, **Grok chooses the final legs and writes full reasons** before any booking code
-6. Without a key, falls back to stats ranking with plain-English stats reasons
-7. Creates a real **booking code** on SportyBet or Football.com
-8. Stores slip history in local Postgres
-
-SportyBet and Football.com share Sporty Group booking-code infrastructure. Codes work across both brands.
+1. Pulls live SportyBet / Football.com fixtures and odds  
+2. Ranks high-probability legs (Poisson + form when available)  
+3. Optionally uses SpaceXAI to finalize picks  
+4. Creates a real **booking code**  
+5. Stores slips in Postgres (Neon in production)
 
 ## Stack
 
-- Next.js 16 (App Router) + React 19 + Tailwind CSS v4
-- Prisma 7 + PostgreSQL (`postgresql://postgres@localhost:5432/rojo`)
-- Vercel AI SDK + `@ai-sdk/xai` (optional)
+- Next.js 16 + React 19 + Tailwind CSS v4  
+- Prisma 7 + PostgreSQL (Neon recommended)  
+- Netlify (`@netlify/plugin-nextjs`)
 
-## Setup
+## Local setup
 
 ```bash
-cd Software/Snowflakes/rojo
-cp .env.example .env   # already set for local Postgres
+cp .env.example .env
+# put your Neon (or local) DATABASE_URL in .env
 npm install
-npx prisma generate
 npx prisma db push
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000).
+## Production database (Neon)
 
-Optional: set `XAI_API_KEY` in `.env` for richer pick explanations.
+1. Create a Neon project and copy the **pooled** connection string.  
+2. Ensure it ends with `?sslmode=require`.  
+3. Set `DATABASE_URL` in:
+   - local `.env` for `prisma db push` / `dev`
+   - Netlify → Environment variables for deploys  
+4. Push schema once from your machine (or CI):
 
-## API
-
-| Method | Path | Purpose |
-|--------|------|---------|
-| `GET` | `/api/fixtures` | Live upcoming events + markets |
-| `POST` | `/api/forecast` | Score, pick legs, create code, persist |
-| `GET` | `/api/slips` | Recent slips |
-| `GET/PATCH` | `/api/slips/[id]` | Detail / regenerate code / status |
-| `POST` | `/api/booking-codes/load` | Load an existing share code |
-
-### Forecast body example
-
-```json
-{
-  "legCount": 5,
-  "minOdds": 1.3,
-  "maxOdds": 2.2,
-  "bookmaker": "sportybet",
-  "createCode": true,
-  "useAi": true
-}
+```bash
+npx prisma db push
 ```
 
-## Notes
+Tables: `ForecastRun`, `BetSlip`, `Pick`.
 
-- Booking codes save a slip. They do **not** place a bet.
-- Endpoints are the same public website APIs the SportyBet UI uses. They can change or rate-limit.
-- Model output is highest-confidence ranking, not a guarantee. Multi-leg risk compounds.
-- 18+. Bet responsibly.
+## Netlify
+
+Suggested site name: e.g. `playrojo` → `playrojo.netlify.app`
+
+`netlify.toml` already sets **public** defaults:
+
+- `SPORTY_COUNTRY=ng`
+- `DEFAULT_BOOKMAKER=football`
+- `NODE_VERSION=22`
+
+### Secrets (Netlify UI only)
+
+**Site configuration → Environment variables** → add and mark as secret:
+
+| Name | Required | Notes |
+|------|----------|--------|
+| `DATABASE_URL` | yes | Neon pooled URL + `sslmode=require` |
+| `XAI_API_KEY` | no | “Help me pick better” |
+
+Do **not** add `DEFAULT_BOOKMAKER` or `SPORTY_COUNTRY` as Netlify “secret” env vars.  
+They are not secrets. If Netlify secret-scanning warns  
+`Secret env var "DEFAULT_BOOKMAKER"'s value detected`, delete that secret  
+from the UI (the value already comes from `netlify.toml`).
+
+Build command is `npm run build` (`prisma generate && next build`).
+
+## Env vars (local / general)
+
+| Name | Required | Secret? | Notes |
+|------|----------|---------|--------|
+| `DATABASE_URL` | yes | yes | Neon pooled URL + `sslmode=require` |
+| `DATABASE_SSL` | no | no | set `true` if URL has no sslmode |
+| `XAI_API_KEY` | no | yes | coach assist |
+| `SPORTY_COUNTRY` | no | no | default `ng` (also in netlify.toml) |
+| `DEFAULT_BOOKMAKER` | no | no | `football` or `sportybet` (also in netlify.toml) |
+
+## 18+
+
+Personal tooling. Not affiliated with Sporty Group. Bet responsibly.

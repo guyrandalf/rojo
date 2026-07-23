@@ -1,0 +1,26 @@
+[build]
+  command = "npm run build"
+  publish = ".next"
+
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
+
+# Public, non-secret build defaults (safe to commit).
+# Do NOT put DATABASE_URL or XAI_API_KEY here.
+[build.environment]
+  NODE_VERSION = "22"
+  SPORTY_COUNTRY = "ng"
+  DEFAULT_BOOKMAKER = "football"
+
+# ---------------------------------------------------------------------------
+# Secrets: set ONLY in Netlify UI
+#   Site configuration → Environment variables
+# Mark these as "Contains secret values":
+#   DATABASE_URL   Neon pooled URL, e.g. ...?sslmode=require
+#   XAI_API_KEY    optional SpaceXAI key
+#
+# Do NOT create Netlify "secret" vars for:
+#   SPORTY_COUNTRY, DEFAULT_BOOKMAKER, NODE_VERSION
+# (those live above; secret-scanning will flag them if you also
+#  paste the same values as Secret scopes).
+# ---------------------------------------------------------------------------

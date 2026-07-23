@@ -10,7 +10,7 @@ import type { FormSnapshot, H2HSnapshot } from "./match-model"
  */
 
 const TSDB = "https://www.thesportsdb.com/api/v1/json/3"
-const UA = "RojoForecast/1.0 (personal; stats enrichment)"
+const UA = "PlayRojo/1.0 (personal; stats enrichment)"
 
 type CacheEntry<T> = { at: number; value: T }
 const teamCache = new Map<string, CacheEntry<{ id: string; name: string } | null>>()

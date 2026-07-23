@@ -230,7 +230,7 @@ export async function generateForecastSlip(input: GenerateSlipInput = {}) {
   const slip = await db.betSlip.create({
     data: {
       status: shareCode ? "CODED" : "DRAFT",
-      label: input.label ?? `Rojo ${picks.length}-fold`,
+      label: input.label ?? `Play Rojo · ${picks.length} games`,
       totalOdds,
       combinedConf,
       shareCode,

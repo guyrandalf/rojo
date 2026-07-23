@@ -2,9 +2,9 @@ import type { Metadata } from "next"
 import "./globals.css"
 
 export const metadata: Metadata = {
-  title: "ROJO · Matchday multi desk",
+  title: "Play Rojo · Betting desk",
   description:
-    "Lock a multi from live prices. Get a loadable SportyBet / Football.com booking code.",
+    "Pick games, get a booking code for SportyBet or Football.com. Play Rojo multi ticket desk.",
 }
 
 export default function RootLayout({

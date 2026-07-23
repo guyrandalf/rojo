@@ -17,7 +17,7 @@ export default function HomePage() {
         <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-4 sm:px-6">
           <div className="flex items-center gap-3">
             <span className="stamp bg-rojo px-3 py-1.5 text-2xl text-white shadow-[3px_3px_0_#000]">
-              ROJO
+              PLAY ROJO
             </span>
             <div>
               <p className="stamp text-xl leading-none tracking-wide sm:text-2xl">

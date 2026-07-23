@@ -1,6 +1,6 @@
 /** Client-side matchday stats (local only). */
 
-const KEY = "rojo.game.v1"
+const KEY = "playrojo.game.v1"
 
 export type GameStats = {
   xp: number
