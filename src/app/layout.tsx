@@ -1,7 +1,16 @@
 import type { Metadata, Viewport } from "next"
 import "./globals.css"
 
+const siteUrl =
+  process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") ||
+  (process.env.URL ? process.env.URL.replace(/\/$/, "") : null) ||
+  (process.env.DEPLOY_PRIME_URL
+    ? process.env.DEPLOY_PRIME_URL.replace(/\/$/, "")
+    : null) ||
+  "https://playrojo.netlify.app"
+
 export const metadata: Metadata = {
+  metadataBase: new URL(siteUrl),
   title: {
     default: "Play Rojo · Betting desk",
     template: "%s · Play Rojo",
@@ -31,11 +40,21 @@ export const metadata: Metadata = {
   manifest: "/site.webmanifest",
   openGraph: {
     type: "website",
+    url: "/",
     siteName: "Play Rojo",
     title: "Play Rojo · Betting desk",
     description:
       "Pick games, get a booking code for SportyBet or Football.com.",
-    images: [{ url: "/og.png", width: 1200, height: 630, alt: "Play Rojo" }],
+    images: [
+      {
+        url: "/og.png",
+        width: 1200,
+        height: 630,
+        alt: "Play Rojo",
+        type: "image/png",
+      },
+    ],
+    locale: "en_NG",
   },
   twitter: {
     card: "summary_large_image",
@@ -44,6 +63,9 @@ export const metadata: Metadata = {
     images: ["/og.png"],
   },
   robots: { index: true, follow: true },
+  alternates: {
+    canonical: "/",
+  },
 }
 
 export const viewport: Viewport = {

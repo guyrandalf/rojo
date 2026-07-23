@@ -74,6 +74,7 @@ Build command is `npm run build` (`prisma generate && next build`).
 | `XAI_API_KEY` | no | yes | coach assist |
 | `SPORTY_COUNTRY` | no | no | default `ng` (also in netlify.toml) |
 | `DEFAULT_BOOKMAKER` | no | no | `football` or `sportybet` (also in netlify.toml) |
+| `NEXT_PUBLIC_SITE_URL` | prod | no | `https://playrojo.netlify.app` (OG image absolute URL) |
 
 ## 18+
 

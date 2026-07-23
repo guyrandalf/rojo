@@ -11,6 +11,9 @@
   NODE_VERSION = "22"
   SPORTY_COUNTRY = "ng"
   DEFAULT_BOOKMAKER = "football"
+  # Absolute URLs for Open Graph / WhatsApp / Telegram previews
+  NEXT_PUBLIC_SITE_URL = "https://playrojo.netlify.app"
+
 
 # ---------------------------------------------------------------------------
 # Secrets: set ONLY in Netlify UI
