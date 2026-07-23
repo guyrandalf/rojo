@@ -40,7 +40,7 @@ function humanizeStatsReason(p: CandidatePick): string {
     `Pick ${p.outcomeDesc} on ${p.homeTeam} vs ${p.awayTeam} (${p.marketDesc}) at ${p.odds.toFixed(2)}.`,
     `Book price implies ~${bookPct}% chance; model confidence ~${conf}%; selection chance ~${chance}%.`,
     p.reasoning,
-    "No large language model reviewed this leg; ranking is statistical only.",
+    "Ranking is statistical only.",
   ].join(" ")
 }
 
@@ -53,37 +53,68 @@ export type GenerateSlipInput = ForecastOptions & {
   useForm?: boolean
 }
 
-export async function generateForecastSlip(input: GenerateSlipInput = {}) {
-  // SportyBet / Football.com multis can run well past 12 games
-  const legCount = Math.min(Math.max(input.legCount ?? 5, 2), 40)
+export type GenerateSlipResult = {
+  // Prisma include shape — kept loose so slip.picks is always available
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  slip: any
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  run: any
+  candidateCount: number
+  eventCount: number
+  formHits: number
+  aiEnabled: boolean
+  researchPoolSize: number
+  dateFrom: string
+  dateTo: string
+  minConfidence: number
+  requestedLegs: number
+  deliveredLegs: number
+  bestEffort: boolean
+  warnings: string[]
+}
+
+export async function generateForecastSlip(
+  input: GenerateSlipInput = {}
+): Promise<GenerateSlipResult> {
+  const requestedLegs = Math.min(Math.max(input.legCount ?? 5, 2), 40)
   const country = input.country ?? process.env.SPORTY_COUNTRY ?? "ng"
   const bookmaker: Bookmaker =
     input.bookmaker ??
     (process.env.DEFAULT_BOOKMAKER === "football" ? "football" : "sportybet")
   const createCode = input.createCode !== false
   const useForm = input.useForm !== false
-  const wantAi = input.useAi !== false
+  const warnings: string[] = []
+
+  // Big tickets: skip AI so Netlify does not time out
+  const bigTicket = requestedLegs > 10
+  const wantAi = input.useAi === true && !bigTicket
+  if (input.useAi === true && bigTicket) {
+    warnings.push(
+      "Help me pick better was skipped for big tickets (more than 10 games) so the code can finish faster."
+    )
+  }
 
   const dateFrom = input.dateFrom ?? todayYmd()
   const dateTo = input.dateTo ?? addDaysYmd(dateFrom, 2)
-  // Lenient defaults: room for more board legs without forcing ultra-shorts
   const minConfidence = input.minConfidence ?? 0.6
   const preferHighProbability = input.preferHighProbability !== false
   const maxOdds =
     input.maxOdds ?? Math.min(2.05, 1 / Math.max(0.48, minConfidence - 0.08))
   const minOdds = input.minOdds ?? 1.18
 
-  // Crawl many pages — feed is not chronological; today often sits on later pages.
+  // Fewer pages on huge requests to stay under serverless time limits
+  const maxPages = requestedLegs >= 15 ? 6 : 8
+
   const events = await fetchUpcomingBoard({
     country,
     bookmaker,
     marketIds: "1,18,29",
-    maxPages: 8,
+    maxPages,
     pageSize: 40,
   })
 
   const forecastOpts: ForecastOptions = {
-    legCount,
+    legCount: requestedLegs,
     minOdds,
     maxOdds,
     markets: input.markets,
@@ -96,11 +127,16 @@ export async function generateForecastSlip(input: GenerateSlipInput = {}) {
 
   const draft = buildCandidates(events, forecastOpts)
 
-  const shortlistSize = Math.min(Math.max(legCount * 4, 20), 80)
+  // Cap shortlist / form work so 20-game runs do not explode
+  const shortlistSize = Math.min(
+    Math.max(requestedLegs * 3, 16),
+    bigTicket ? 36 : 60
+  )
   const shortlist = selectLegs(draft, shortlistSize, { preferHighProbability })
   const shortlistIds = new Set(shortlist.map((p) => p.eventId))
   const formTargets = events
     .filter((e) => shortlistIds.has(e.eventId))
+    .slice(0, bigTicket ? 10 : 16)
     .map((e) => ({
       eventId: e.eventId,
       homeTeam: e.homeTeamName,
@@ -130,14 +166,15 @@ export async function generateForecastSlip(input: GenerateSlipInput = {}) {
   let modelNotes = ""
 
   if (wantAi && isAiConfigured()) {
-    const ai = await selectPicksWithAi(researchPool, legCount)
+    const aiTarget = Math.min(requestedLegs, 10)
+    const ai = await selectPicksWithAi(researchPool, aiTarget)
     aiEnabled = ai.aiEnabled
     aiOverview = ai.overview
-    if (ai.picks.length >= Math.min(2, legCount)) {
+    if (ai.picks.length >= 2) {
       picks = ai.picks
       modelNotes = [
         `Window ${dateFrom} → ${dateTo}. Target chance ≥${(minConfidence * 100).toFixed(0)}%.`,
-        "Pipeline: multi-page board → Poisson+form shortlist → AI final legs → booking code.",
+        "Board scan → shortlist → extra help → booking code.",
         ai.notes,
         formHits > 0
           ? `Form/H2H on ${formHits}/${formTargets.length} matches.`
@@ -146,46 +183,63 @@ export async function generateForecastSlip(input: GenerateSlipInput = {}) {
         .filter(Boolean)
         .join(" ")
     } else {
-      picks = selectLegs(candidates, legCount, { preferHighProbability }).map(
-        (p) => ({
-          ...p,
-          reasoning: humanizeStatsReason(p),
-        })
-      )
+      picks = selectLegs(candidates, requestedLegs, {
+        preferHighProbability,
+      }).map((p) => ({
+        ...p,
+        reasoning: humanizeStatsReason(p),
+      }))
       modelNotes = [
         `Window ${dateFrom} → ${dateTo}. Target chance ≥${(minConfidence * 100).toFixed(0)}%.`,
-        "AI could not finalize; used high-probability stats ranking.",
+        "Extra help could not finish; used normal ranking.",
         ai.notes,
       ]
         .filter(Boolean)
         .join(" ")
       aiEnabled = false
+      warnings.push("Extra help failed; used normal pick ranking.")
     }
   } else {
-    picks = selectLegs(candidates, legCount, { preferHighProbability }).map(
-      (p) => ({
-        ...p,
-        reasoning: humanizeStatsReason(p),
-      })
-    )
-    modelNotes = wantAi
-      ? `Window ${dateFrom} → ${dateTo}. Target chance ≥${(minConfidence * 100).toFixed(0)}%. XAI_API_KEY missing: stats high-prob ranking only.`
-      : `Window ${dateFrom} → ${dateTo}. Target chance ≥${(minConfidence * 100).toFixed(0)}%. Stats high-prob ranking.`
+    picks = selectLegs(candidates, requestedLegs, {
+      preferHighProbability,
+    }).map((p) => ({
+      ...p,
+      reasoning: humanizeStatsReason(p),
+    }))
+    modelNotes =
+      input.useAi === true && !wantAi
+        ? `Window ${dateFrom} → ${dateTo}. Target ≥${(minConfidence * 100).toFixed(0)}%. Stats ranking (big ticket).`
+        : input.useAi === true
+          ? `Window ${dateFrom} → ${dateTo}. Target ≥${(minConfidence * 100).toFixed(0)}%. Help key missing; stats ranking only.`
+          : `Window ${dateFrom} → ${dateTo}. Target ≥${(minConfidence * 100).toFixed(0)}%. Stats ranking.`
     if (formHits > 0) {
       modelNotes += ` Form/H2H on ${formHits}/${formTargets.length} shortlisted.`
     }
   }
 
-  if (picks.length < Math.min(2, legCount)) {
+  // Best effort: deliver what we can if at least 2 legs, even if less than requested
+  if (picks.length < 2) {
     throw new Error(
-      `Not enough high-probability fixtures in ${dateFrom} → ${dateTo} ` +
-        `(found ${picks.length} picks from ${events.length} board events / ${candidates.length} outcomes ≥${(minConfidence * 100).toFixed(0)}%). ` +
-        `Widen the date range, lower min chance, or raise max odds slightly.`
+      `Not enough strong games in ${dateFrom} → ${dateTo}. ` +
+        `Found ${picks.length} (need at least 2). ` +
+        `Checked ${events.length} matches, ${candidates.length} outcomes at ≥${(minConfidence * 100).toFixed(0)}%. ` +
+        `Try: fewer games, lower strength %, bigger odds range, or more days.`
     )
+  }
+
+  const bestEffort = picks.length < requestedLegs
+  if (bestEffort) {
+    warnings.push(
+      `You asked for ${requestedLegs} games but only ${picks.length} strong enough picks were on the board. Ticket built with ${picks.length}.`
+    )
+    modelNotes += ` Best effort: ${picks.length}/${requestedLegs} games.`
   }
 
   if (aiOverview) {
     modelNotes = `${aiOverview} | ${modelNotes}`
+  }
+  if (warnings.length) {
+    modelNotes = `${warnings.join(" ")} | ${modelNotes}`
   }
 
   const totalOdds = combinedOdds(picks)
@@ -199,7 +253,9 @@ export async function generateForecastSlip(input: GenerateSlipInput = {}) {
       maxOdds,
       strategy: aiEnabled
         ? "high_prob_shortlist_ai_select"
-        : "high_prob_poisson_form",
+        : bestEffort
+          ? "high_prob_best_effort"
+          : "high_prob_poisson_form",
       modelNotes,
       aiEnabled,
     },
@@ -221,10 +277,12 @@ export async function generateForecastSlip(input: GenerateSlipInput = {}) {
       shareCode = created.shareCode
       shareUrl = created.shareURL
     } catch (err) {
-      modelNotes = [
-        modelNotes,
-        err instanceof Error ? `Code create failed: ${err.message}` : "Code create failed",
-      ].join(" | ")
+      const msg =
+        err instanceof Error ? err.message : "Could not create booking code"
+      modelNotes = `${modelNotes} | Code create failed: ${msg}`
+      warnings.push(
+        `Ticket saved but booking code failed: ${msg}. Try again or change betting site.`
+      )
     }
   }
 
@@ -277,5 +335,9 @@ export async function generateForecastSlip(input: GenerateSlipInput = {}) {
     dateFrom,
     dateTo,
     minConfidence,
+    requestedLegs,
+    deliveredLegs: picks.length,
+    bestEffort,
+    warnings,
   }
 }

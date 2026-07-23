@@ -70,7 +70,14 @@ export function GenerateForm({ onCreated }: { onCreated?: () => void }) {
     dateFrom?: string
     dateTo?: string
     minConfidence?: number
+    bestEffort?: boolean
+    requestedLegs?: number
+    deliveredLegs?: number
+    warnings?: string[]
   } | null>(null)
+  const [info, setInfo] = useState<string | null>(null)
+
+  const bigTicket = legCount > 10
 
   function applyPreset(preset: "today" | "weekend" | "3d" | "7d") {
     const t = ymd(new Date())
@@ -97,21 +104,27 @@ export function GenerateForm({ onCreated }: { onCreated?: () => void }) {
     e.preventDefault()
     setLoading(true)
     setError(null)
+    setInfo(null)
     setCopied(false)
     setPhase("scan")
 
     const scanTimer = window.setTimeout(() => setPhase("stack"), 600)
+    const controller = new AbortController()
+    // Client-side guard so we can explain timeouts before Netlify dies silently
+    const kill = window.setTimeout(() => controller.abort(), 55_000)
 
     try {
+      // For big tickets, don't send useAi even if box checked (server also enforces)
       const res = await fetch("/api/forecast", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        signal: controller.signal,
         body: JSON.stringify({
           legCount,
           minOdds,
           maxOdds,
           bookmaker,
-          useAi: useCoach,
+          useAi: useCoach && legCount <= 10,
           createCode: true,
           markets: ["match_result", "over_under", "btts"],
           dateFrom,
@@ -124,6 +137,7 @@ export function GenerateForm({ onCreated }: { onCreated?: () => void }) {
       type ForecastResponse = {
         ok?: boolean
         error?: string
+        errorMessage?: string
         slip?: SlipResult
         eventCount?: number
         candidateCount?: number
@@ -131,6 +145,10 @@ export function GenerateForm({ onCreated }: { onCreated?: () => void }) {
         dateFrom?: string
         dateTo?: string
         minConfidence?: number
+        bestEffort?: boolean
+        requestedLegs?: number
+        deliveredLegs?: number
+        warnings?: string[]
       }
 
       let data: ForecastResponse
@@ -138,16 +156,22 @@ export function GenerateForm({ onCreated }: { onCreated?: () => void }) {
         data = (await res.json()) as ForecastResponse
       } catch {
         throw new Error(
-          res.ok ? "Bad answer from server" : `Server not running (${res.status})`
+          res.status === 502 || res.status === 504
+            ? "Server took too long or crashed. Try fewer games, lower strength %, or turn off “Help me pick better”."
+            : res.ok
+              ? "Bad answer from server"
+              : `Could not reach server (${res.status})`
         )
       }
 
       if (!res.ok || !data.ok || !data.slip) {
-        throw new Error(
-          typeof data.error === "string"
-            ? data.error
-            : `Could not make code (${res.status})`
-        )
+        const msg =
+          (typeof data.error === "string" && data.error) ||
+          (typeof data.errorMessage === "string" && data.errorMessage) ||
+          (res.status === 502 || res.status === 504
+            ? "Took too long. Try fewer games or turn off extra help."
+            : `Could not make code (${res.status})`)
+        throw new Error(msg)
       }
 
       setPhase("lock")
@@ -159,7 +183,19 @@ export function GenerateForm({ onCreated }: { onCreated?: () => void }) {
         dateFrom: data.dateFrom,
         dateTo: data.dateTo,
         minConfidence: data.minConfidence,
+        bestEffort: data.bestEffort,
+        requestedLegs: data.requestedLegs,
+        deliveredLegs: data.deliveredLegs,
+        warnings: data.warnings,
       })
+
+      if (data.warnings?.length) {
+        setInfo(data.warnings.join(" "))
+      } else if (data.bestEffort) {
+        setInfo(
+          `You asked for ${data.requestedLegs} games; we built ${data.deliveredLegs} with strong enough picks.`
+        )
+      }
 
       recordLockIn({
         legs: data.slip.picks.length,
@@ -169,9 +205,16 @@ export function GenerateForm({ onCreated }: { onCreated?: () => void }) {
       onCreated?.()
     } catch (err) {
       setPhase("idle")
-      setError(err instanceof Error ? err.message : "Something went wrong")
+      if (err instanceof Error && err.name === "AbortError") {
+        setError(
+          "Took too long (over 55s). Try fewer games, lower strength %, shorter days, or turn off “Help me pick better”."
+        )
+      } else {
+        setError(err instanceof Error ? err.message : "Something went wrong")
+      }
     } finally {
       window.clearTimeout(scanTimer)
+      window.clearTimeout(kill)
       setLoading(false)
     }
   }
@@ -313,6 +356,14 @@ export function GenerateForm({ onCreated }: { onCreated?: () => void }) {
           </label>
         </div>
 
+        {bigTicket && (
+          <div className="border-t-3 border-black bg-panel-2 px-4 py-3 text-base font-semibold text-gold">
+            Big ticket ({legCount} games): may take longer. “Help me pick better”
+            is skipped over 10 games so the code can finish. If it fails, lower
+            strength % or ask for fewer games.
+          </div>
+        )}
+
         <div className="flex flex-wrap items-center gap-4 border-t-3 border-black bg-panel-2 px-4 py-5">
           <button type="submit" disabled={loading} className="btn-lock">
             {loading
@@ -340,6 +391,11 @@ export function GenerateForm({ onCreated }: { onCreated?: () => void }) {
           {error && (
             <p className="w-full border-3 border-black bg-rojo px-3 py-3 text-base font-bold text-white">
               {error}
+            </p>
+          )}
+          {info && !error && (
+            <p className="w-full border-3 border-black bg-panel px-3 py-3 text-base font-semibold text-gold">
+              {info}
             </p>
           )}
         </div>
@@ -374,6 +430,11 @@ export function GenerateForm({ onCreated }: { onCreated?: () => void }) {
                     ? ` · Strong from ${(meta.minConfidence * 100).toFixed(0)}%`
                     : ""}
                   {` · Checked ${meta.events} matches · Kept ${meta.candidates}`}
+                  {meta.bestEffort &&
+                  meta.requestedLegs != null &&
+                  meta.deliveredLegs != null
+                    ? ` · Built ${meta.deliveredLegs} of ${meta.requestedLegs} games`
+                    : ""}
                 </p>
               )}
             </div>
