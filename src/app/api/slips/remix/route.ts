@@ -29,7 +29,7 @@ const bodySchema = z.object({
   sourceSlipId: z.string().min(1),
   bookmaker: z.enum(["sportybet", "football"]).optional(),
   country: z.string().min(2).max(4).optional(),
-  legs: z.array(legSchema).min(1).max(20),
+  legs: z.array(legSchema).min(1).max(40),
 })
 
 function marketKind(marketId: string, desc: string): MarketKind {

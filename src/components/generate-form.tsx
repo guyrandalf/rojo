@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react"
 import { recordLockIn } from "@/lib/game-stats"
+import { TouchField } from "@/components/touch-field"
 
 type PickRow = {
   id: string
@@ -202,43 +203,44 @@ export function GenerateForm({ onCreated }: { onCreated?: () => void }) {
         </div>
 
         <div className="grid gap-0 sm:grid-cols-2 lg:grid-cols-4">
-          <Field label="How many games">
-            <input
-              type="number"
-              min={2}
-              max={12}
-              value={legCount}
-              onChange={(e) => setLegCount(Number(e.target.value))}
-            />
-          </Field>
-          <Field label="How strong (min %)">
-            <input
-              type="number"
-              min={50}
-              max={90}
-              step={1}
-              value={minChancePct}
-              onChange={(e) => setMinChancePct(Number(e.target.value))}
-            />
-          </Field>
-          <Field label="Smallest odds">
-            <input
-              type="number"
-              step="0.05"
-              min={1.05}
-              value={minOdds}
-              onChange={(e) => setMinOdds(Number(e.target.value))}
-            />
-          </Field>
-          <Field label="Biggest odds">
-            <input
-              type="number"
-              step="0.05"
-              min={1.1}
-              value={maxOdds}
-              onChange={(e) => setMaxOdds(Number(e.target.value))}
-            />
-          </Field>
+          <TouchField
+            label="How many games"
+            value={legCount}
+            onChange={setLegCount}
+            min={2}
+            max={40}
+            step={1}
+            decimals={0}
+            hint="Up to 40 games"
+          />
+          <TouchField
+            label="How strong (min %)"
+            value={minChancePct}
+            onChange={setMinChancePct}
+            min={50}
+            max={90}
+            step={1}
+            decimals={0}
+            hint="Higher = safer looking"
+          />
+          <TouchField
+            label="Smallest odds"
+            value={minOdds}
+            onChange={setMinOdds}
+            min={1.05}
+            max={10}
+            step={0.05}
+            decimals={2}
+          />
+          <TouchField
+            label="Biggest odds"
+            value={maxOdds}
+            onChange={setMaxOdds}
+            min={1.1}
+            max={50}
+            step={0.05}
+            decimals={2}
+          />
         </div>
 
         <div className="grid gap-0 border-t-3 border-black sm:grid-cols-2 lg:grid-cols-3">

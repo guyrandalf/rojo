@@ -54,7 +54,8 @@ export type GenerateSlipInput = ForecastOptions & {
 }
 
 export async function generateForecastSlip(input: GenerateSlipInput = {}) {
-  const legCount = Math.min(Math.max(input.legCount ?? 5, 2), 12)
+  // SportyBet / Football.com multis can run well past 12 games
+  const legCount = Math.min(Math.max(input.legCount ?? 5, 2), 40)
   const country = input.country ?? process.env.SPORTY_COUNTRY ?? "ng"
   const bookmaker: Bookmaker =
     input.bookmaker ??
@@ -95,7 +96,7 @@ export async function generateForecastSlip(input: GenerateSlipInput = {}) {
 
   const draft = buildCandidates(events, forecastOpts)
 
-  const shortlistSize = Math.min(Math.max(legCount * 5, 16), 28)
+  const shortlistSize = Math.min(Math.max(legCount * 4, 20), 80)
   const shortlist = selectLegs(draft, shortlistSize, { preferHighProbability })
   const shortlistIds = new Set(shortlist.map((p) => p.eventId))
   const formTargets = events

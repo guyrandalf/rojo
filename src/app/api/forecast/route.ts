@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic"
 export const maxDuration = 120
 
 const bodySchema = z.object({
-  legCount: z.number().int().min(2).max(12).optional(),
+  legCount: z.number().int().min(2).max(40).optional(),
   minOdds: z.number().min(1.01).max(50).optional(),
   maxOdds: z.number().min(1.01).max(50).optional(),
   country: z.string().min(2).max(4).optional(),
