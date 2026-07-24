@@ -6,9 +6,9 @@ export const dynamic = "force-dynamic"
 export const maxDuration = 60
 
 const bodySchema = z.object({
-  legCount: z.number().int().min(2).max(40).optional(),
-  minOdds: z.number().min(1.01).max(50).optional(),
-  maxOdds: z.number().min(1.01).max(50).optional(),
+  legCount: z.number().int().min(2).max(10).optional(),
+  minOdds: z.number().min(1.01).max(100).optional(),
+  maxOdds: z.number().min(1.01).max(100).optional(),
   country: z.string().min(2).max(4).optional(),
   bookmaker: z.enum(["sportybet", "football"]).optional(),
   createCode: z.boolean().optional(),
@@ -22,12 +22,16 @@ const bodySchema = z.object({
   dateTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   minConfidence: z.number().min(0.5).max(0.95).optional(),
   preferHighProbability: z.boolean().optional(),
+  includeBasketball: z.boolean().optional(),
 })
 
 function humanError(err: unknown): { status: number; error: string } {
   const message = err instanceof Error ? err.message : "Could not make code"
 
-  if (/not enough strong games|not enough high-probability|found 0 picks/i.test(message)) {
+  if (/XAI_API_KEY|AI analysis on/i.test(message)) {
+    return { status: 503, error: message }
+  }
+  if (/not enough high-conviction|not enough strong/i.test(message)) {
     return { status: 422, error: message }
   }
   if (
@@ -37,18 +41,15 @@ function humanError(err: unknown): { status: number; error: string } {
     return {
       status: 504,
       error:
-        "Took too long. Try fewer games, turn off “Help me pick better”, or use a shorter day range.",
+        "Took too long. Try fewer games, lower strength %, or a shorter day range.",
     }
   }
   if (/Could not load fixtures|ECONNREFUSED|fetch failed|network/i.test(message)) {
     return {
       status: 502,
       error:
-        "Could not reach the betting site board. Try again in a minute, or switch betting site.",
+        "Could not reach the betting site board. Try again, or switch betting site.",
     }
-  }
-  if (/Could not create booking code/i.test(message)) {
-    return { status: 502, error: message }
   }
 
   return { status: 502, error: message }
@@ -62,14 +63,22 @@ export async function POST(request: Request) {
       return NextResponse.json(
         {
           ok: false,
-          error: "Some settings look wrong. Check games, odds, and dates.",
+          error: "Some settings look wrong. Check games and dates (max 10 games).",
           details: parsed.error.flatten(),
         },
         { status: 400 }
       )
     }
 
-    const result = await generateForecastSlip(parsed.data)
+    // Product: AI always on; ignore client toggle
+    const result = await generateForecastSlip({
+      ...parsed.data,
+      useAi: true,
+      markets: ["any"],
+      // No odds band from client
+      minOdds: 1.01,
+      maxOdds: 80,
+    })
 
     return NextResponse.json({
       ok: true,
@@ -87,10 +96,8 @@ export async function POST(request: Request) {
       warnings: result.warnings,
       runId: result.run.id,
       engine: result.aiEnabled
-        ? "high_prob_shortlist_ai_select"
-        : result.bestEffort
-          ? "high_prob_best_effort"
-          : "high_prob_poisson_form",
+        ? "deep_markets_ai_conviction"
+        : "deep_markets_stats_fallback",
       slip: {
         id: result.slip.id,
         status: result.slip.status,

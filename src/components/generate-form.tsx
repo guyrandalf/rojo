@@ -48,16 +48,15 @@ function addDays(dateYmd: string, days: number): string {
 
 export function GenerateForm({ onCreated }: { onCreated?: () => void }) {
   const today = useMemo(() => ymd(new Date()), [])
-  const [legCount, setLegCount] = useState(5)
-  const [minOdds, setMinOdds] = useState(1.2)
-  const [maxOdds, setMaxOdds] = useState(2.0)
-  const [minChancePct, setMinChancePct] = useState(60)
+  // Max 10, default 10 — can only go down
+  const [legCount, setLegCount] = useState(10)
+  const [minChancePct, setMinChancePct] = useState(62)
   const [dateFrom, setDateFrom] = useState(today)
   const [dateTo, setDateTo] = useState(addDays(today, 2))
   const [bookmaker, setBookmaker] = useState<"sportybet" | "football">(
     "football"
   )
-  const [useCoach, setUseCoach] = useState(false)
+  const [includeBasketball, setIncludeBasketball] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<SlipResult | null>(null)
@@ -76,8 +75,6 @@ export function GenerateForm({ onCreated }: { onCreated?: () => void }) {
     warnings?: string[]
   } | null>(null)
   const [info, setInfo] = useState<string | null>(null)
-
-  const bigTicket = legCount > 10
 
   function applyPreset(preset: "today" | "weekend" | "3d" | "7d") {
     const t = ymd(new Date())
@@ -110,27 +107,23 @@ export function GenerateForm({ onCreated }: { onCreated?: () => void }) {
 
     const scanTimer = window.setTimeout(() => setPhase("stack"), 600)
     const controller = new AbortController()
-    // Client-side guard so we can explain timeouts before Netlify dies silently
     const kill = window.setTimeout(() => controller.abort(), 55_000)
 
     try {
-      // For big tickets, don't send useAi even if box checked (server also enforces)
       const res = await fetch("/api/forecast", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         signal: controller.signal,
         body: JSON.stringify({
-          legCount,
-          minOdds,
-          maxOdds,
+          legCount: Math.min(10, Math.max(2, legCount)),
           bookmaker,
-          useAi: useCoach && legCount <= 10,
+          useAi: true,
           createCode: true,
-          markets: ["match_result", "over_under", "btts"],
           dateFrom,
           dateTo,
           minConfidence: minChancePct / 100,
           preferHighProbability: true,
+          includeBasketball,
         }),
       })
 
@@ -157,7 +150,7 @@ export function GenerateForm({ onCreated }: { onCreated?: () => void }) {
       } catch {
         throw new Error(
           res.status === 502 || res.status === 504
-            ? "Server took too long or crashed. Try fewer games, lower strength %, or turn off “Help me pick better”."
+            ? "Server took too long. Try fewer games or lower strength %."
             : res.ok
               ? "Bad answer from server"
               : `Could not reach server (${res.status})`
@@ -169,7 +162,7 @@ export function GenerateForm({ onCreated }: { onCreated?: () => void }) {
           (typeof data.error === "string" && data.error) ||
           (typeof data.errorMessage === "string" && data.errorMessage) ||
           (res.status === 502 || res.status === 504
-            ? "Took too long. Try fewer games or turn off extra help."
+            ? "Took too long. Try fewer games or lower strength %."
             : `Could not make code (${res.status})`)
         throw new Error(msg)
       }
@@ -193,7 +186,7 @@ export function GenerateForm({ onCreated }: { onCreated?: () => void }) {
         setInfo(data.warnings.join(" "))
       } else if (data.bestEffort) {
         setInfo(
-          `You asked for ${data.requestedLegs} games; we built ${data.deliveredLegs} with strong enough picks.`
+          `You asked for ${data.requestedLegs} games; we built ${data.deliveredLegs} with strong analysis.`
         )
       }
 
@@ -207,7 +200,7 @@ export function GenerateForm({ onCreated }: { onCreated?: () => void }) {
       setPhase("idle")
       if (err instanceof Error && err.name === "AbortError") {
         setError(
-          "Took too long (over 55s). Try fewer games, lower strength %, shorter days, or turn off “Help me pick better”."
+          "Took too long (over 55s). Try fewer games or a shorter day range."
         )
       } else {
         setError(err instanceof Error ? err.message : "Something went wrong")
@@ -230,7 +223,7 @@ export function GenerateForm({ onCreated }: { onCreated?: () => void }) {
     phase === "scan"
       ? "Looking for games…"
       : phase === "stack"
-        ? "Adding games…"
+        ? "Deep markets + AI…"
         : phase === "lock"
           ? "Code ready"
           : "Ready"
@@ -245,45 +238,26 @@ export function GenerateForm({ onCreated }: { onCreated?: () => void }) {
           </span>
         </div>
 
-        {/* 2 cols so each control has room for − value + (4 cols clipped numbers) */}
         <div className="grid gap-0 sm:grid-cols-2">
           <TouchField
             label="How many games"
             value={legCount}
-            onChange={setLegCount}
+            onChange={(n) => setLegCount(Math.min(10, Math.max(2, n)))}
             min={2}
-            max={40}
+            max={10}
             step={1}
             decimals={0}
-            hint="Up to 40 games"
+            hint="Max 10 games (you can only go down from 10)"
           />
           <TouchField
-            label="How strong (min %)"
+            label="How sure (min %)"
             value={minChancePct}
             onChange={setMinChancePct}
             min={50}
             max={90}
             step={1}
             decimals={0}
-            hint="Higher = safer looking"
-          />
-          <TouchField
-            label="Smallest odds"
-            value={minOdds}
-            onChange={setMinOdds}
-            min={1.05}
-            max={10}
-            step={0.05}
-            decimals={2}
-          />
-          <TouchField
-            label="Biggest odds"
-            value={maxOdds}
-            onChange={setMaxOdds}
-            min={1.1}
-            max={50}
-            step={0.05}
-            decimals={2}
+            hint="Based on analysis, not just short odds. Lower % = more risk."
           />
         </div>
 
@@ -340,29 +314,27 @@ export function GenerateForm({ onCreated }: { onCreated?: () => void }) {
           <label className="flex cursor-pointer items-start gap-3 text-base text-mute">
             <input
               type="checkbox"
-              checked={useCoach}
-              onChange={(e) => setUseCoach(e.target.checked)}
+              checked={includeBasketball}
+              onChange={(e) => setIncludeBasketball(e.target.checked)}
               className="mt-1 h-5 w-5 accent-rojo"
             />
             <span>
               <span className="text-lg font-bold text-ink">
-                Help me pick better
+                Include basketball
               </span>
               <span className="mt-1 block text-base text-mute">
-                Extra help on top of normal search. Leave off if you just want
-                the code. (Needs special key on the server if you turn it on.)
+                Football is always on. Tick this to also scan basketball
+                (winner, totals, handicap). Still max 10 games combined.
               </span>
             </span>
           </label>
         </div>
 
-        {bigTicket && (
-          <div className="border-t-3 border-black bg-panel-2 px-4 py-3 text-base font-semibold text-gold">
-            Big ticket ({legCount} games): may take longer. “Help me pick better”
-            is skipped over 10 games so the code can finish. If it fails, lower
-            strength % or ask for fewer games.
-          </div>
-        )}
+        <div className="border-t-3 border-black px-4 py-3 text-sm font-semibold text-mute">
+          AI analysis is always on. We dig into many markets (corners, halves,
+          team goals, etc.), not only 1X2 / Over. Short odds are not treated as
+          “safe” by themselves — a 4.00 can score high if analysis likes it.
+        </div>
 
         <div className="flex flex-wrap items-center gap-4 border-t-3 border-black bg-panel-2 px-4 py-5">
           <button type="submit" disabled={loading} className="btn-lock">
@@ -417,7 +389,7 @@ export function GenerateForm({ onCreated }: { onCreated?: () => void }) {
                   </p>
                 </div>
                 <div>
-                  <p className="hud-label">Chance all win</p>
+                  <p className="hud-label">Combined conviction</p>
                   <p className="font-mono text-2xl font-bold">
                     {((result.combinedConf ?? 0) * 100).toFixed(1)}%
                   </p>
@@ -427,13 +399,13 @@ export function GenerateForm({ onCreated }: { onCreated?: () => void }) {
                 <p className="mt-4 text-sm font-semibold text-mute">
                   Days: {meta.dateFrom} → {meta.dateTo}
                   {meta.minConfidence != null
-                    ? ` · Strong from ${(meta.minConfidence * 100).toFixed(0)}%`
+                    ? ` · Sure from ${(meta.minConfidence * 100).toFixed(0)}%`
                     : ""}
-                  {` · Checked ${meta.events} matches · Kept ${meta.candidates}`}
+                  {` · Deep-scanned ${meta.events} · Outcomes ${meta.candidates}`}
                   {meta.bestEffort &&
                   meta.requestedLegs != null &&
                   meta.deliveredLegs != null
-                    ? ` · Built ${meta.deliveredLegs} of ${meta.requestedLegs} games`
+                    ? ` · Built ${meta.deliveredLegs} of ${meta.requestedLegs}`
                     : ""}
                 </p>
               )}
@@ -482,9 +454,7 @@ export function GenerateForm({ onCreated }: { onCreated?: () => void }) {
               <div key={p.id} className="leg-slot p-4">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <p className="text-sm font-bold text-gold">
-                      Game {i + 1}
-                    </p>
+                    <p className="text-sm font-bold text-gold">Game {i + 1}</p>
                     <p className="stamp text-xl leading-tight sm:text-2xl">
                       {p.homeTeam}{" "}
                       <span className="font-sans text-base text-mute">vs</span>{" "}
@@ -507,7 +477,7 @@ export function GenerateForm({ onCreated }: { onCreated?: () => void }) {
                     </p>
                   </div>
                 </div>
-                <p className="mt-2 text-sm font-semibold uppercase text-dim">
+                <p className="mt-2 text-sm font-semibold text-dim">
                   {p.marketDesc}
                 </p>
                 {p.reasoning && (
@@ -520,7 +490,7 @@ export function GenerateForm({ onCreated }: { onCreated?: () => void }) {
           </div>
 
           <p className="border-t-3 border-black px-4 py-4 text-sm font-semibold text-dim sm:px-5">
-            Even strong picks can lose. Many games together is harder. Check the
+            Analysis is not a guarantee. 1.05 can lose; 4.00 can win. Check the
             site before you put money.
           </p>
         </section>

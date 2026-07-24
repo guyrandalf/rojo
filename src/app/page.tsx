@@ -48,9 +48,10 @@ export default function HomePage() {
             <span className="block text-rojo">GET THE CODE.</span>
           </h1>
           <p className="mt-4 max-w-2xl text-base font-medium leading-relaxed text-mute sm:text-lg">
-            Choose how many games, which days, and how strong the picks should
-            be. We give you a booking code for SportyBet or Football.com. Open
-            any old code on the right to change games and get a new code.
+            Up to 10 games. AI always analyses (deep markets: halves, corners,
+            team goals, and more — not only 1X2). Strength is by analysis, not
+            “short odds = sure”. Optional basketball. Open old codes on the
+            right to change games.
           </p>
         </div>
 

@@ -128,6 +128,8 @@ export async function fetchUpcomingEvents(options?: {
   pageSize?: number
   pageNum?: number
   marketIds?: string
+  /** e.g. sr:sport:1 football, sr:sport:2 basketball */
+  sportId?: string
   bookmaker?: Bookmaker
   /** When true (default), fall back to the other Sporty Group brand on network failure */
   fallback?: boolean
@@ -136,13 +138,14 @@ export async function fetchUpcomingEvents(options?: {
   const pageSize = options?.pageSize ?? 40
   const pageNum = options?.pageNum ?? 1
   const marketIds = options?.marketIds ?? "1,18,29"
+  const sportId = options?.sportId ?? "sr:sport:1"
   const brands =
     options?.fallback === false
       ? [options.bookmaker ?? "sportybet"]
       : orderBrands(options?.bookmaker)
 
   const params = new URLSearchParams({
-    sportId: "sr:sport:1",
+    sportId,
     marketId: marketIds,
     pageSize: String(pageSize),
     pageNum: String(pageNum),
@@ -181,6 +184,7 @@ export async function fetchUpcomingBoard(options?: {
   country?: string
   bookmaker?: Bookmaker
   marketIds?: string
+  sportId?: string
   /** How many pages to crawl (default 8, pageSize 40 → up to ~320 events) */
   maxPages?: number
   pageSize?: number
@@ -201,6 +205,7 @@ export async function fetchUpcomingBoard(options?: {
             country: options?.country,
             bookmaker: options?.bookmaker,
             marketIds: options?.marketIds ?? "1,18,29",
+            sportId: options?.sportId ?? "sr:sport:1",
             pageNum,
             pageSize,
           })
@@ -235,6 +240,47 @@ export async function fetchUpcomingBoard(options?: {
 
   all.sort((a, b) => a.estimateStartTime - b.estimateStartTime)
   return all
+}
+
+/** Merge full market boards onto events (deep corners / halves / props). */
+export async function enrichEventsWithFullMarkets(
+  events: SportyEvent[],
+  options?: { country?: string; bookmaker?: Bookmaker; concurrency?: number }
+): Promise<SportyEvent[]> {
+  const concurrency = options?.concurrency ?? 5
+  const out: SportyEvent[] = new Array(events.length)
+  let cursor = 0
+
+  async function worker() {
+    while (true) {
+      const idx = cursor++
+      if (idx >= events.length) return
+      const base = events[idx]
+      const detail = await fetchEventDetail(base.eventId, {
+        country: options?.country,
+        bookmaker: options?.bookmaker,
+      })
+      if (detail?.markets?.length) {
+        out[idx] = {
+          ...base,
+          ...detail,
+          markets: detail.markets,
+          homeTeamName: detail.homeTeamName || base.homeTeamName,
+          awayTeamName: detail.awayTeamName || base.awayTeamName,
+          sport: detail.sport || base.sport,
+        }
+      } else {
+        out[idx] = base
+      }
+    }
+  }
+
+  await Promise.all(
+    Array.from({ length: Math.min(concurrency, Math.max(1, events.length)) }, () =>
+      worker()
+    )
+  )
+  return out
 }
 
 /**

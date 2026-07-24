@@ -12,29 +12,21 @@ import { clamp } from "./math"
 
 export type ForecastOptions = {
   legCount?: number
+  /** Optional soft odds band — usually unused; ranking is % based */
   minOdds?: number
   maxOdds?: number
   markets?: Array<"match_result" | "over_under" | "btts" | "any">
   maxHoursAhead?: number
-  /**
-   * Inclusive local calendar dates `YYYY-MM-DD`.
-   * When set, kickoffs outside [from 00:00, to 23:59:59] are dropped.
-   */
   dateFrom?: string
   dateTo?: string
   /**
-   * Minimum chance we want the pick to "happen" (0-1).
-   * Filters on max(bookImplied, model confidence). Default ~0.68 (~70% mode).
+   * Minimum analysis conviction (0-1). Not the same as short odds.
+   * A 4.00 can score high if model/form backs it; 1.05 can score low if model disagrees.
    */
   minConfidence?: number
-  /**
-   * When true (default for high-prob desks), rank by confidence first,
-   * not by positive model edge.
-   */
   preferHighProbability?: boolean
 }
 
-/** Start/end of a local calendar day as epoch ms. */
 export function localDayBounds(dateYmd: string): { start: number; end: number } {
   const [y, m, d] = dateYmd.split("-").map(Number)
   const start = new Date(y, m - 1, d, 0, 0, 0, 0).getTime()
@@ -61,13 +53,20 @@ function marketKind(
   desc: string
 ): "match_result" | "over_under" | "btts" | "other" {
   const d = desc.toLowerCase()
-  if (marketId === "1" || d.includes("1x2") || d === "match result") {
+  if (
+    marketId === "1" ||
+    marketId === "219" ||
+    d.includes("1x2") ||
+    d === "match result" ||
+    d.includes("winner")
+  ) {
     return "match_result"
   }
   if (
     marketId === "18" ||
     d.includes("over/under") ||
     d.includes("total goals") ||
+    d.includes("total points") ||
     d.startsWith("o/u")
   ) {
     return "over_under"
@@ -83,12 +82,41 @@ function marketKind(
   return "other"
 }
 
+/** True for markets we will at least attempt (not pure micro-minute junk spam). */
+function isAnalyzableMarket(marketId: string, desc: string): boolean {
+  const d = desc.toLowerCase()
+  // Drop ultra-noisy minute-band props unless we have strong feed probs
+  if (/from 1 to \d+ minute/i.test(d) && !d.includes("half")) return false
+  if (d.includes("odd or even") && !d.includes("total")) return false
+
+  // Keep main + deep but common
+  if (
+    marketKind(marketId, desc) !== "other" ||
+    d.includes("double chance") ||
+    d.includes("draw no bet") ||
+    d.includes("half") ||
+    d.includes("corner") ||
+    d.includes("handicap") ||
+    d.includes("win to nil") ||
+    d.includes("team total") ||
+    d.includes("home team") ||
+    d.includes("away team") ||
+    d.includes("exact") ||
+    d.includes("clean sheet") ||
+    d.includes("goal") ||
+    d.includes("winner")
+  ) {
+    return true
+  }
+  return false
+}
+
 /**
- * Blend book fair probability with Poisson model probability.
- * Prefer model when market data quality is high; still respect the book.
- *
- * Confidence is multi-leg oriented: high modelProb, non-negative edge preferred.
- * Edge ≈ modelProb - bookImplied (positive = model likes it more than the price).
+ * Analysis-first scoring. Odds are a quote, not the truth.
+ * - Model (Poisson/form) when available
+ * - Book feed probability as market view
+ * - Trap shorts (model much colder than book) get downgraded even at 1.05
+ * - Value longshots (model hotter than book) can score well even at 4.00
  */
 export function scoreOutcome(input: {
   odds: number
@@ -108,10 +136,13 @@ export function scoreOutcome(input: {
       : 1 / input.odds
 
   const notes: string[] = []
-  notes.push(`Book ~${(bookImplied * 100).toFixed(0)}% @ ${input.odds.toFixed(2)}`)
+  notes.push(
+    `Market price ${input.odds.toFixed(2)} (implies ~${(bookImplied * 100).toFixed(0)}%)`
+  )
 
   let modelProb = bookImplied
-  let modelWeight = 0.15
+  let modelWeight = 0.12
+  let hasModel = false
 
   if (input.ctx) {
     const mp = modelProbForOutcome(
@@ -122,66 +153,68 @@ export function scoreOutcome(input: {
       input.specifier
     )
     if (mp) {
+      hasModel = true
       modelProb = mp.modelProb
-      modelWeight = clamp(0.35 + 0.45 * input.ctx.model.quality, 0.35, 0.8)
+      modelWeight = clamp(0.4 + 0.4 * input.ctx.model.quality, 0.4, 0.85)
       notes.push(
-        `${mp.label} ${(modelProb * 100).toFixed(0)}% (λ ${input.ctx.model.lambdaHome.toFixed(2)}-${input.ctx.model.lambdaAway.toFixed(2)})`
+        `Model ${mp.label} ${(modelProb * 100).toFixed(0)}% (λ ${input.ctx.model.lambdaHome.toFixed(2)}-${input.ctx.model.lambdaAway.toFixed(2)})`
       )
+    } else {
+      notes.push("Deep/special market: conviction from price + form context")
+      modelWeight = 0.08
     }
 
     const hf = input.ctx.homeForm
     const af = input.ctx.awayForm
     if (hf && hf.played >= 3) {
-      notes.push(`Home form ${hf.recent} (${hf.wins}W${hf.draws}D${hf.losses}L)`)
+      notes.push(`Home form ${hf.recent}`)
+      if (hf.formScore >= 0.65) modelProb = clamp(modelProb + 0.02, 0.05, 0.95)
+      if (hf.formScore <= 0.35) modelProb = clamp(modelProb - 0.02, 0.05, 0.95)
     }
     if (af && af.played >= 3) {
-      notes.push(`Away form ${af.recent} (${af.wins}W${af.draws}D${af.losses}L)`)
+      notes.push(`Away form ${af.recent}`)
     }
     if (input.ctx.h2h && input.ctx.h2h.meetings >= 2) {
       const h = input.ctx.h2h
       notes.push(
-        `H2H ${h.meetings}g: ${h.homeTeamWins}-${h.draws}-${h.awayTeamWins}, ${h.avgGoals.toFixed(1)} g/g`
+        `H2H ${h.meetings}g ${h.homeTeamWins}-${h.draws}-${h.awayTeamWins}`
       )
     }
   } else {
-    notes.push("Poisson fit unavailable; book-only baseline")
+    notes.push("No match model; using market probability + structure only")
   }
 
-  // Bayesian-ish blend
-  let confidence =
-    (1 - modelWeight) * bookImplied + modelWeight * modelProb
-
+  let confidence = (1 - modelWeight) * bookImplied + modelWeight * modelProb
   const edge = modelProb - bookImplied
-  if (edge >= 0.03) {
-    confidence += Math.min(0.06, edge * 0.5)
-    notes.push(`+edge ${(edge * 100).toFixed(1)}pp vs book`)
-  } else if (edge <= -0.05) {
-    confidence -= Math.min(0.08, Math.abs(edge) * 0.6)
-    notes.push(`model colder than book (${(edge * 100).toFixed(1)}pp)`)
+
+  if (hasModel && edge >= 0.04) {
+    confidence += Math.min(0.08, edge * 0.55)
+    notes.push(
+      `Analysis likes this more than the price (+${(edge * 100).toFixed(1)}pp) — not just short odds`
+    )
+  } else if (hasModel && edge <= -0.06) {
+    // Classic trap: 1.05 that the model hates
+    confidence -= Math.min(0.12, Math.abs(edge) * 0.7)
+    notes.push(
+      `Trap risk: price is shorter than analysis (${(edge * 100).toFixed(1)}pp) — 1.05 can still fail`
+    )
   }
 
-  // Multi-leg hygiene: longshots and ultra-shorts
-  if (input.odds > 2.6) {
-    confidence -= 0.06
-    notes.push("longshot penalty for multi")
-  } else if (input.odds < 1.2) {
-    confidence -= 0.025
-    notes.push("short price; little multi juice")
-  } else if (input.odds >= 1.35 && input.odds <= 1.9 && modelProb >= 0.52) {
-    confidence += 0.02
-    notes.push("solid multi band")
+  // Deep markets without model: require solid feed signal, slight haircut
+  if (!hasModel && marketKind(input.marketId, input.marketDesc) === "other") {
+    confidence *= 0.92
+    notes.push("Special market haircut (less model coverage)")
   }
 
-  // Timing
   if (input.hoursUntilKickoff <= 12) {
     confidence += 0.01
-  } else if (input.hoursUntilKickoff > 48) {
-    confidence -= 0.015
-    notes.push("kickoff >48h")
+  } else if (input.hoursUntilKickoff > 72) {
+    confidence -= 0.02
+    notes.push("Far kickoff; more uncertainty")
   }
 
-  // Require non-trivial model support for very high conf
-  confidence = clamp(confidence, 0.05, 0.92)
+  confidence = clamp(confidence, 0.05, 0.94)
+  notes.push(`Conviction score ${(confidence * 100).toFixed(0)}%`)
 
   return {
     confidence,
@@ -201,19 +234,15 @@ export function buildCandidates(
   options: ForecastOptions = {},
   formByEvent?: Map<string, FormBundle>
 ): CandidatePick[] {
-  const minOdds = options.minOdds ?? 1.12
-  // High-probability desk: keep prices short enough to map near minConfidence
-  const minConfidence = options.minConfidence ?? 0.6
-  // Lenient cap: allow user maxOdds more room past pure 1/minConf
-  const autoMaxFromConf = 1 / Math.max(0.45, minConfidence - 0.1)
-  const maxOdds = options.maxOdds ?? Math.min(2.1, autoMaxFromConf * 1.15)
-  const maxHours = options.maxHoursAhead ?? 240
-  const allowed = new Set(
-    options.markets ?? ["match_result", "over_under", "btts"]
-  )
+  const minConfidence = options.minConfidence ?? 0.62
+  // Odds band optional — default: no limit (analysis-only)
+  const minOdds = options.minOdds ?? 1.01
+  const maxOdds = options.maxOdds ?? 100
+  const maxHours = options.maxHoursAhead ?? 336
+  const allowed = new Set(options.markets ?? ["any"])
   const now = Date.now()
 
-  let windowStart = now + 15 * 60 * 1000 // skip started / imminent
+  let windowStart = now + 15 * 60 * 1000
   let windowEnd = now + maxHours * 60 * 60 * 1000
   if (options.dateFrom) {
     windowStart = Math.max(windowStart, localDayBounds(options.dateFrom).start)
@@ -223,9 +252,8 @@ export function buildCandidates(
   }
 
   const candidates: CandidatePick[] = []
-
-  // Pre-build match models once per event
   const ctxByEvent = new Map<string, EnrichedMatchContext | null>()
+
   for (const event of events) {
     const kickoffMs = event.estimateStartTime
     if (kickoffMs < windowStart || kickoffMs > windowEnd) continue
@@ -248,22 +276,31 @@ export function buildCandidates(
 
     const hoursUntil = (kickoffMs - now) / (1000 * 60 * 60)
     const tournament = event.sport?.category?.tournament?.name
+    const sportName = event.sport?.name
     const ctx = ctxByEvent.get(event.eventId) ?? null
     const rows = flattenActiveOutcomes(event)
 
     for (const { market, outcome } of rows) {
+      if (!isAnalyzableMarket(market.id, market.desc)) continue
+
       const kind = marketKind(market.id, market.desc)
       if (!allowed.has("any") && kind !== "other" && !allowed.has(kind)) continue
-      if (kind === "other" && !allowed.has("any")) continue
+      if (kind === "other" && !allowed.has("any") && !allowed.has("other" as never)) {
+        // allow other when markets is any only
+      }
 
       const odds = Number(outcome.odds)
-      if (odds < minOdds || odds > maxOdds) continue
+      if (!Number.isFinite(odds) || odds < minOdds || odds > maxOdds) continue
 
       const feedProb = outcome.probability ? Number(outcome.probability) : undefined
+      // Need either feed probability or a model path for conviction
+      const hasFeed =
+        feedProb != null && Number.isFinite(feedProb) && feedProb > 0.05
+      if (!hasFeed && !ctx) continue
+
       const scored = scoreOutcome({
         odds,
-        feedProbability:
-          feedProb && Number.isFinite(feedProb) ? feedProb : undefined,
+        feedProbability: hasFeed ? feedProb : undefined,
         marketId: market.id,
         marketDesc: market.desc,
         outcomeDesc: outcome.desc,
@@ -272,33 +309,26 @@ export function buildCandidates(
         ctx,
       })
 
-      const impliedProb =
-        feedProb && Number.isFinite(feedProb) && feedProb > 0
-          ? feedProb
-          : 1 / odds
+      if (scored.confidence < minConfidence) continue
 
-      // "Likely to happen" gate: book or model must clear the bar
-      const chance = Math.max(impliedProb, scored.confidence)
-      if (chance < minConfidence) continue
+      const impliedProb =
+        hasFeed && feedProb! > 0 ? feedProb! : 1 / odds
 
       const sourceOdds: Record<string, number> = {}
       for (const o of market.outcomes) {
         sourceOdds[o.desc] = Number(o.odds)
       }
 
-      // In high-prob mode, surface "chance" as confidence so the desk
-      // shows ~70%+ rather than a colder model-only number.
-      const displayConf =
-        options.preferHighProbability !== false
-          ? chance
-          : scored.confidence
+      const labelTournament = sportName
+        ? `${tournament ?? "—"} · ${sportName}`
+        : tournament
 
       candidates.push({
         eventId: event.eventId,
         gameId: event.gameId,
         homeTeam: event.homeTeamName,
         awayTeam: event.awayTeamName,
-        tournament,
+        tournament: labelTournament,
         kickoffAt: new Date(kickoffMs),
         marketId: market.id,
         marketDesc: market.desc,
@@ -307,7 +337,7 @@ export function buildCandidates(
         specifier: market.specifier ?? null,
         odds,
         impliedProb,
-        confidence: displayConf,
+        confidence: scored.confidence,
         edge: scored.edge,
         reasoning: scored.reasoning,
         sourceOdds,
@@ -323,8 +353,7 @@ function pickMarketBucket(p: CandidatePick): string {
 }
 
 /**
- * Select legs by confidence, with soft market diversity.
- * High-probability mode ranks pure chance first (what the user means by ~70%).
+ * Rank by analysis conviction (confidence), not by short odds.
  */
 export function selectLegs(
   candidates: CandidatePick[],
@@ -334,25 +363,21 @@ export function selectLegs(
   const highProb = options?.preferHighProbability !== false
 
   const sorted = [...candidates].sort((a, b) => {
-    const aChance = Math.max(a.impliedProb, a.confidence)
-    const bChance = Math.max(b.impliedProb, b.confidence)
     if (highProb) {
-      if (bChance !== aChance) return bChance - aChance
       if (b.confidence !== a.confidence) return b.confidence - a.confidence
-      // Prefer slightly better price among similar probs
+      // Prefer positive analysis edge over blindly shorter price
+      if (b.edge !== a.edge) return b.edge - a.edge
       return a.odds - b.odds
     }
-    const aEdgeOk = a.edge >= -0.02 ? 1 : 0
-    const bEdgeOk = b.edge >= -0.02 ? 1 : 0
-    if (bEdgeOk !== aEdgeOk) return bEdgeOk - aEdgeOk
-    if (b.confidence !== a.confidence) return b.confidence - a.confidence
-    return b.edge - a.edge
+    if (b.edge !== a.edge) return b.edge - a.edge
+    return b.confidence - a.confidence
   })
 
   const selected: CandidatePick[] = []
   const usedEvents = new Set<string>()
   const bucketCounts = new Map<string, number>()
-  const maxPerBucket = Math.max(2, Math.ceil(legCount * 0.5))
+  // Allow more market variety when deep markets are on
+  const maxPerBucket = Math.max(3, Math.ceil(legCount * 0.55))
 
   for (const c of sorted) {
     if (selected.length >= legCount) break

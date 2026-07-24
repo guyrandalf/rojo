@@ -105,8 +105,10 @@ You are NOT allowed to invent injuries, lineups, suspensions, weather, or scores
 You MUST only select from the candidateIndex values provided.
 You MUST pick exactly ${legCount} legs when possible (or fewer only if the pool is too weak).
 At most ONE pick per match (same eventId must not appear twice).
-This desk is HIGH-PROBABILITY: prefer the highest bookImpliedProb / statsModelConfidence legs (aim ~70%+ chance), not longshots or thin edges.
-Be honest about variance: a ${legCount}-fold multi compounds risk even with short prices.
+This desk ranks by ANALYSIS conviction (statsModelConfidence + edge), NOT by short odds alone.
+A 4.00 with strong model/form edge can beat a 1.05 trap the model hates.
+Prefer high conviction; diversify markets (not only Over 1.5 spam) when quality is equal.
+Be honest about variance: a ${legCount}-fold multi compounds risk.
 
 For each chosen leg, write a REAL explanation a punter can read:
 - what the book price implies
