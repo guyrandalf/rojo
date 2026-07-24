@@ -22,7 +22,7 @@ export function MatchdayHud({ bump }: { bump?: number }) {
   const pct = Math.min(100, Math.round((into / need) * 100))
 
   return (
-    <div className="plate grid gap-4 p-4 sm:grid-cols-4 sm:p-5">
+    <div className="plate grid grid-cols-2 gap-4 p-4 sm:grid-cols-4 sm:p-5">
       <div>
         <p className="hud-label">Your level</p>
         <p className="stamp text-3xl text-gold sm:text-4xl">LV {level}</p>

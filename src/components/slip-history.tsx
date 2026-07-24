@@ -55,7 +55,7 @@ export function SlipHistory({
   }, [load, refreshKey])
 
   return (
-    <aside className="plate lg:sticky lg:top-4">
+    <aside id="my-codes" className="plate scroll-mt-4 lg:sticky lg:top-4">
       <div className="flex items-center justify-between border-b-3 border-black bg-panel-2 px-4 py-4">
         <h2 className="stamp text-xl sm:text-2xl">My codes</h2>
         <button type="button" onClick={() => void load()} className="btn-chip">
@@ -71,7 +71,7 @@ export function SlipHistory({
 
       {!loading && slips.length === 0 && (
         <p className="px-4 py-8 text-base font-semibold text-mute">
-          No code yet. Make one on the left.
+          No code yet. Use the form to make one.
         </p>
       )}
 

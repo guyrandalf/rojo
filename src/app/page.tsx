@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { GenerateForm } from "@/components/generate-form"
 import { MatchdayHud } from "@/components/matchday-hud"
 import { SlipHistory } from "@/components/slip-history"
@@ -10,6 +10,15 @@ export default function HomePage() {
   const [refreshKey, setRefreshKey] = useState(0)
   const [hudBump, setHudBump] = useState(0)
   const [selectedSlipId, setSelectedSlipId] = useState<string | null>(null)
+  const viewerRef = useRef<HTMLDivElement>(null)
+
+  // On mobile the history list sits below the form, so opening a code
+  // swaps content in far above the current scroll position.
+  useEffect(() => {
+    if (selectedSlipId) {
+      viewerRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })
+    }
+  }, [selectedSlipId])
 
   return (
     <div className="min-h-screen text-ink">
@@ -33,9 +42,22 @@ export default function HomePage() {
               </p>
             </div>
           </div>
-          <p className="border-2 border-black bg-black px-3 py-1.5 text-sm font-bold text-gold">
-            18+ only · Bet wise
-          </p>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() =>
+                document
+                  .getElementById("my-codes")
+                  ?.scrollIntoView({ behavior: "smooth", block: "start" })
+              }
+              className="btn-chip lg:hidden"
+            >
+              My codes ↓
+            </button>
+            <p className="border-2 border-black bg-black px-3 py-1.5 text-sm font-bold text-gold">
+              18+ only · Bet wise
+            </p>
+          </div>
         </div>
       </header>
 
@@ -48,15 +70,15 @@ export default function HomePage() {
             <span className="block text-rojo">GET THE CODE.</span>
           </h1>
           <p className="mt-4 max-w-2xl text-base font-medium leading-relaxed text-mute sm:text-lg">
-            Up to 10 games. AI always analyses (deep markets: halves, corners,
-            team goals, and more — not only 1X2). Strength is by analysis, not
-            “short odds = sure”. Optional basketball. Open old codes on the
-            right to change games.
+            Up to 10 games. AI always analyses deep markets (halves, corners,
+            team goals, and more), not only 1X2. Strength is by analysis, not
+            “short odds = sure”. Optional basketball. Open your old codes under
+            “My codes” to change games.
           </p>
         </div>
 
         <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_340px] xl:grid-cols-[minmax(0,1fr)_380px] lg:items-start">
-          <div className="min-w-0 space-y-5">
+          <div ref={viewerRef} className="min-w-0 scroll-mt-4 space-y-5">
             {selectedSlipId ? (
               <SlipViewer
                 slipId={selectedSlipId}

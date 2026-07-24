@@ -102,13 +102,15 @@ export function SlipViewer({
   )
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
-  const [newCode, setNewCode] = useState<string | null>(null)
+  const [remixed, setRemixed] = useState<{
+    slipId: string
+    code: string
+  } | null>(null)
   const [copied, setCopied] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
     setError(null)
-    setNewCode(null)
     setSaveError(null)
     try {
       const res = await fetch(`/api/slips/${slipId}?board=1`)
@@ -167,6 +169,9 @@ export function SlipViewer({
     void load()
   }, [load])
 
+  // Only show the new-code banner while the slip it belongs to is open.
+  const freshCode = remixed && remixed.slipId === slipId ? remixed.code : null
+
   const dirty = useMemo(
     () =>
       draft.some(
@@ -186,7 +191,7 @@ export function SlipViewer({
   )
 
   function selectOutcome(eventId: string, market: MarketOpt, outcome: OutcomeOpt) {
-    setNewCode(null)
+    setRemixed(null)
     setDraft((prev) =>
       prev.map((leg) => {
         if (leg.eventId !== eventId) return leg
@@ -243,7 +248,9 @@ export function SlipViewer({
       })
       const data = await res.json()
       if (!data.ok) throw new Error(data.error || "Remix failed")
-      setNewCode(data.slip.shareCode)
+      if (data.slip.shareCode) {
+        setRemixed({ slipId: data.slip.id, code: data.slip.shareCode })
+      }
       recordLockIn({
         legs: data.slip.picks?.length ?? draft.length,
         totalOdds: data.slip.totalOdds ?? combinedOdds,
@@ -264,7 +271,7 @@ export function SlipViewer({
   }
 
   return (
-    <section className="plate overflow-hidden">
+    <section className="plate overflow-clip">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b-3 border-black bg-panel-2 px-4 py-3">
         <div>
           <p className="hud-label text-base">Change this ticket</p>
@@ -282,6 +289,27 @@ export function SlipViewer({
         </div>
       </div>
 
+      {freshCode && (
+        <div className="border-b-3 border-black bg-rojo px-4 py-4">
+          <p className="text-base font-bold text-white/80">New booking code</p>
+          <div className="mt-1 flex flex-wrap items-center gap-3">
+            <p className="ticket-code text-3xl text-white sm:text-4xl">
+              {freshCode}
+            </p>
+            <button
+              type="button"
+              onClick={() => void copy(freshCode)}
+              className="border-3 border-black bg-gold px-4 py-2 text-base font-bold text-black"
+            >
+              {copied ? "Copied!" : "Copy code"}
+            </button>
+          </div>
+          <p className="mt-2 text-sm font-semibold text-white/85">
+            This ticket is loaded below. The old code is still under My codes.
+          </p>
+        </div>
+      )}
+
       {loading && (
         <p className="px-4 py-8 font-mono text-sm text-mute">
           LOADING BOARD…
@@ -295,14 +323,14 @@ export function SlipViewer({
 
       {!loading && !error && slip && (
         <>
-          <div className="grid gap-0 border-b-3 border-black sm:grid-cols-3">
-            <div className="border-b-3 border-black px-4 py-4 sm:border-b-0 sm:border-r-3">
+          <div className="grid grid-cols-2 gap-0 border-b-3 border-black sm:grid-cols-3">
+            <div className="border-r-3 border-black px-4 py-4">
               <p className="hud-label text-base">Old total odds</p>
               <p className="stamp text-3xl text-gold">
                 {slip.totalOdds?.toFixed(2) ?? "—"}
               </p>
             </div>
-            <div className="border-b-3 border-black px-4 py-4 sm:border-b-0 sm:border-r-3">
+            <div className="px-4 py-4 sm:border-r-3 sm:border-black">
               <p className="hud-label text-base">New total odds</p>
               <p className="stamp text-3xl">
                 {combinedOdds.toFixed(2)}
@@ -311,14 +339,14 @@ export function SlipViewer({
                 )}
               </p>
             </div>
-            <div className="px-4 py-4">
+            <div className="col-span-2 border-t-3 border-black px-4 py-4 sm:col-span-1 sm:border-t-0">
               <p className="hud-label text-base">Betting site</p>
               <select
                 value={bookmaker}
                 onChange={(e) =>
                   setBookmaker(e.target.value as "sportybet" | "football")
                 }
-                className="mt-1 w-full max-w-[220px]"
+                className="mt-1 w-full sm:max-w-[220px]"
               >
                 <option value="football">Football.com</option>
                 <option value="sportybet">SportyBet</option>
@@ -406,53 +434,45 @@ export function SlipViewer({
             })}
           </div>
 
-          <div className="flex flex-wrap items-center gap-3 border-t-3 border-black bg-panel-2 px-4 py-4">
-            <button
-              type="button"
-              disabled={saving || draft.length === 0}
-              onClick={() => void saveRemix()}
-              className="btn-lock"
-            >
-              {saving
-                ? "Making code…"
-                : dirty
-                  ? "Get new booking code"
-                  : "Get same code again"}
-            </button>
-            {slip.shareCode && (
-              <button
-                type="button"
-                onClick={() => void copy(slip.shareCode!)}
-                className="btn-chip"
-              >
-                {copied ? "Copied!" : "Copy old code"}
-              </button>
-            )}
-            {saveError && (
-              <p className="w-full bg-rojo px-3 py-2 text-sm font-semibold text-white">
-                {saveError}
-              </p>
-            )}
-          </div>
-
-          {newCode && (
-            <div className="border-t-3 border-black bg-rojo px-4 py-4">
-              <p className="text-base font-bold text-white/80">New booking code</p>
-              <div className="mt-1 flex flex-wrap items-center gap-3">
-                <p className="ticket-code text-4xl text-white">{newCode}</p>
+          <div className="sticky bottom-0 z-10 border-t-3 border-black bg-panel-2 px-4 py-3 sm:py-4">
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
+              <div className="flex items-baseline gap-2">
+                <span className="hud-label text-base">New total</span>
+                <span className="stamp text-2xl text-gold">
+                  {combinedOdds.toFixed(2)}
+                </span>
+                {dirty && (
+                  <span className="text-sm font-bold text-rojo">changed</span>
+                )}
+              </div>
+              {slip.shareCode && (
                 <button
                   type="button"
-                  onClick={() => void copy(newCode)}
-                  className="border-3 border-black bg-gold px-4 py-2 text-base font-bold text-black"
+                  onClick={() => void copy(slip.shareCode!)}
+                  className="btn-chip ml-auto"
                 >
-                  Copy code
+                  {copied ? "Copied!" : "Copy old code"}
                 </button>
-              </div>
-              <p className="mt-2 text-sm font-semibold text-white/85">
-                New code is under My codes. Old one is still there.
-              </p>
+              )}
+              <button
+                type="button"
+                disabled={saving || draft.length === 0}
+                onClick={() => void saveRemix()}
+                className="btn-lock w-full sm:w-auto"
+              >
+                {saving
+                  ? "Making code…"
+                  : dirty
+                    ? "Get new booking code"
+                    : "Get same code again"}
+              </button>
+              {saveError && (
+                <p className="w-full bg-rojo px-3 py-2 text-sm font-semibold text-white">
+                  {saveError}
+                </p>
+              )}
             </div>
-          )}
+          </div>
         </>
       )}
     </section>

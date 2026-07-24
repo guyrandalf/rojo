@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { recordLockIn } from "@/lib/game-stats"
 import { TouchField } from "@/components/touch-field"
 
@@ -75,6 +75,15 @@ export function GenerateForm({ onCreated }: { onCreated?: () => void }) {
     warnings?: string[]
   } | null>(null)
   const [info, setInfo] = useState<string | null>(null)
+  const resultRef = useRef<HTMLElement>(null)
+
+  // The finished ticket renders below a long form; on mobile it would
+  // otherwise sit off-screen when the code arrives.
+  useEffect(() => {
+    if (result) {
+      resultRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })
+    }
+  }, [result])
 
   function applyPreset(preset: "today" | "weekend" | "3d" | "7d") {
     const t = ymd(new Date())
@@ -333,11 +342,15 @@ export function GenerateForm({ onCreated }: { onCreated?: () => void }) {
         <div className="border-t-3 border-black px-4 py-3 text-sm font-semibold text-mute">
           AI analysis is always on. We dig into many markets (corners, halves,
           team goals, etc.), not only 1X2 / Over. Short odds are not treated as
-          “safe” by themselves — a 4.00 can score high if analysis likes it.
+          “safe” by themselves; a 4.00 can score high if analysis likes it.
         </div>
 
         <div className="flex flex-wrap items-center gap-4 border-t-3 border-black bg-panel-2 px-4 py-5">
-          <button type="submit" disabled={loading} className="btn-lock">
+          <button
+            type="submit"
+            disabled={loading}
+            className="btn-lock w-full sm:w-auto"
+          >
             {loading
               ? phaseLabel
               : `Get booking code (${legCount} games)`}
@@ -374,7 +387,7 @@ export function GenerateForm({ onCreated }: { onCreated?: () => void }) {
       </form>
 
       {result && (
-        <section className="plate overflow-hidden">
+        <section ref={resultRef} className="plate scroll-mt-4 overflow-hidden">
           <div className="relative grid gap-0 border-b-3 border-black lg:grid-cols-[1fr_auto]">
             <div className="scanlines absolute inset-0 opacity-40" />
             <div className="relative px-4 py-5 sm:px-5">
