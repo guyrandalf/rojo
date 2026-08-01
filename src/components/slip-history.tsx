@@ -138,7 +138,7 @@ export function SlipHistory({
         })}
       </ul>
       <p className="border-t-3 border-black px-4 py-3 text-sm font-bold text-dim">
-        Tap a code to change games
+        Tap a code to see the games
       </p>
     </aside>
   )

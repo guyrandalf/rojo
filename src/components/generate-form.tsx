@@ -46,10 +46,13 @@ function addDays(dateYmd: string, days: number): string {
   return ymd(dt)
 }
 
+/** Games are chosen automatically to reach the target odds; hard cap 10. */
+const MAX_LEGS = 10
+
 export function GenerateForm({ onCreated }: { onCreated?: () => void }) {
   const today = useMemo(() => ymd(new Date()), [])
-  // Max 10, default 10 — can only go down
-  const [legCount, setLegCount] = useState(10)
+  // The punter states the payout ("5 odds"); the desk finds the safest route.
+  const [targetOdds, setTargetOdds] = useState(5)
   const [minChancePct, setMinChancePct] = useState(62)
   const [dateFrom, setDateFrom] = useState(today)
   const [dateTo, setDateTo] = useState(addDays(today, 2))
@@ -62,6 +65,10 @@ export function GenerateForm({ onCreated }: { onCreated?: () => void }) {
   const [result, setResult] = useState<SlipResult | null>(null)
   const [copied, setCopied] = useState(false)
   const [phase, setPhase] = useState<"idle" | "scan" | "stack" | "lock">("idle")
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(
+    null
+  )
+  const [nowScanning, setNowScanning] = useState<string | null>(null)
   const [meta, setMeta] = useState<{
     events: number
     candidates: number
@@ -106,40 +113,119 @@ export function GenerateForm({ onCreated }: { onCreated?: () => void }) {
     }
   }
 
+  async function postJson<T extends { ok?: boolean; error?: string }>(
+    url: string,
+    body: unknown,
+    timeoutMs: number
+  ): Promise<T> {
+    const controller = new AbortController()
+    const kill = window.setTimeout(() => controller.abort(), timeoutMs)
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        signal: controller.signal,
+        body: JSON.stringify(body),
+      })
+      let data: T
+      try {
+        data = (await res.json()) as T
+      } catch {
+        throw new Error(
+          res.ok
+            ? "Bad answer from server"
+            : `Could not reach server (${res.status})`
+        )
+      }
+      if (!res.ok || !data.ok) {
+        throw new Error(
+          (typeof data.error === "string" && data.error) ||
+            `Request failed (${res.status})`
+        )
+      }
+      return data
+    } finally {
+      window.clearTimeout(kill)
+    }
+  }
+
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault()
     setLoading(true)
     setError(null)
     setInfo(null)
     setCopied(false)
+    setProgress(null)
+    setNowScanning(null)
     setPhase("scan")
 
-    const scanTimer = window.setTimeout(() => setPhase("stack"), 600)
-    const controller = new AbortController()
-    const kill = window.setTimeout(() => controller.abort(), 55_000)
-
     try {
-      const res = await fetch("/api/forecast", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        signal: controller.signal,
-        body: JSON.stringify({
-          legCount: Math.min(10, Math.max(2, legCount)),
+      // Phase 1 — scan the board, get the list of matches to analyse.
+      const start = await postJson<{
+        ok: boolean
+        error?: string
+        runId: string
+        eventIds: string[]
+        warnings?: string[]
+      }>(
+        "/api/forecast/start",
+        {
+          legCount: MAX_LEGS,
           bookmaker,
-          useAi: true,
-          createCode: true,
           dateFrom,
           dateTo,
           minConfidence: minChancePct / 100,
-          preferHighProbability: true,
           includeBasketball,
-        }),
-      })
+        },
+        20_000
+      )
 
-      type ForecastResponse = {
-        ok?: boolean
+      // Phase 2 — one short request per match. Two in flight: fast enough,
+      // and it keeps the free stats API from rate-limiting us.
+      setPhase("stack")
+      const eventIds = start.eventIds
+      const total = eventIds.length
+      let done = 0
+      setProgress({ done, total })
+
+      const concurrency = 2
+      let cursor = 0
+
+      async function stepWorker() {
+        while (cursor < eventIds.length) {
+          const idx = cursor++
+          const eventId = eventIds[idx]
+          // One retry per match; a match that fails twice is skipped, not fatal.
+          for (let attempt = 0; attempt < 2; attempt++) {
+            try {
+              const step = await postJson<{
+                ok: boolean
+                error?: string
+                homeTeam: string | null
+                awayTeam: string | null
+              }>("/api/forecast/step", { runId: start.runId, eventId }, 15_000)
+              if (step.homeTeam && step.awayTeam) {
+                setNowScanning(`${step.homeTeam} vs ${step.awayTeam}`)
+              }
+              break
+            } catch {
+              if (attempt === 1) break // give up on this match only
+            }
+          }
+          done++
+          setProgress({ done, total })
+        }
+      }
+
+      await Promise.all(
+        Array.from({ length: Math.min(concurrency, total) }, () => stepWorker())
+      )
+
+      // Phase 3 — rank what was analysed, create the booking code.
+      setNowScanning(null)
+      const data = await postJson<{
+        ok: boolean
         error?: string
-        errorMessage?: string
         slip?: SlipResult
         eventCount?: number
         candidateCount?: number
@@ -151,30 +237,18 @@ export function GenerateForm({ onCreated }: { onCreated?: () => void }) {
         requestedLegs?: number
         deliveredLegs?: number
         warnings?: string[]
-      }
+      }>(
+        "/api/forecast/finish",
+        {
+          runId: start.runId,
+          legCount: MAX_LEGS,
+          targetOdds: Math.min(2000, Math.max(2, targetOdds)),
+          createCode: true,
+        },
+        20_000
+      )
 
-      let data: ForecastResponse
-      try {
-        data = (await res.json()) as ForecastResponse
-      } catch {
-        throw new Error(
-          res.status === 502 || res.status === 504
-            ? "Server took too long. Try fewer games or lower strength %."
-            : res.ok
-              ? "Bad answer from server"
-              : `Could not reach server (${res.status})`
-        )
-      }
-
-      if (!res.ok || !data.ok || !data.slip) {
-        const msg =
-          (typeof data.error === "string" && data.error) ||
-          (typeof data.errorMessage === "string" && data.errorMessage) ||
-          (res.status === 502 || res.status === 504
-            ? "Took too long. Try fewer games or lower strength %."
-            : `Could not make code (${res.status})`)
-        throw new Error(msg)
-      }
+      if (!data.slip) throw new Error("Could not make code")
 
       setPhase("lock")
       setResult(data.slip)
@@ -195,7 +269,7 @@ export function GenerateForm({ onCreated }: { onCreated?: () => void }) {
         setInfo(data.warnings.join(" "))
       } else if (data.bestEffort) {
         setInfo(
-          `You asked for ${data.requestedLegs} games; we built ${data.deliveredLegs} with strong analysis.`
+          `We built ${data.deliveredLegs} games with strong analysis.`
         )
       }
 
@@ -208,15 +282,12 @@ export function GenerateForm({ onCreated }: { onCreated?: () => void }) {
     } catch (err) {
       setPhase("idle")
       if (err instanceof Error && err.name === "AbortError") {
-        setError(
-          "Took too long (over 55s). Try fewer games or a shorter day range."
-        )
+        setError("A step took too long. Try again — analysis picks up where it stopped.")
       } else {
         setError(err instanceof Error ? err.message : "Something went wrong")
       }
     } finally {
-      window.clearTimeout(scanTimer)
-      window.clearTimeout(kill)
+      setNowScanning(null)
       setLoading(false)
     }
   }
@@ -232,10 +303,23 @@ export function GenerateForm({ onCreated }: { onCreated?: () => void }) {
     phase === "scan"
       ? "Looking for games…"
       : phase === "stack"
-        ? "Deep markets + AI…"
+        ? progress
+          ? `Analyzing match ${Math.min(progress.done + 1, progress.total)} of ${progress.total}…`
+          : "Analyzing matches…"
         : phase === "lock"
           ? "Code ready"
           : "Ready"
+
+  const meterWidth =
+    phase === "idle"
+      ? "8%"
+      : phase === "scan"
+        ? "12%"
+        : phase === "stack"
+          ? progress && progress.total > 0
+            ? `${Math.round(12 + 80 * (progress.done / progress.total))}%`
+            : "15%"
+          : "100%"
 
   return (
     <div className="min-w-0 space-y-5">
@@ -249,24 +333,24 @@ export function GenerateForm({ onCreated }: { onCreated?: () => void }) {
 
         <div className="grid gap-0 sm:grid-cols-2">
           <TouchField
-            label="How many games"
-            value={legCount}
-            onChange={(n) => setLegCount(Math.min(10, Math.max(2, n)))}
+            label="Total odds you want"
+            value={targetOdds}
+            onChange={(n) => setTargetOdds(Math.min(2000, Math.max(2, n)))}
             min={2}
-            max={10}
+            max={2000}
             step={1}
             decimals={0}
-            hint="Max 10 games (you can only go down from 10)"
+            hint="We build the safest slip that reaches this. Max 10 games."
           />
           <TouchField
-            label="How sure (min %)"
+            label="How sure per game (min %)"
             value={minChancePct}
             onChange={setMinChancePct}
             min={50}
             max={90}
             step={1}
             decimals={0}
-            hint="Based on analysis, not just short odds. Lower % = more risk."
+            hint="Every game must pass this. Lower % = riskier games allowed."
           />
         </div>
 
@@ -340,9 +424,10 @@ export function GenerateForm({ onCreated }: { onCreated?: () => void }) {
         </div>
 
         <div className="border-t-3 border-black px-4 py-3 text-sm font-semibold text-mute">
-          AI analysis is always on. We dig into many markets (corners, halves,
-          team goals, etc.), not only 1X2 / Over. Short odds are not treated as
-          “safe” by themselves; a 4.00 can score high if analysis likes it.
+          Every match is analysed one by one (Poisson model + recent form +
+          H2H) across many markets (corners, halves, team goals, etc.), not
+          only 1X2 / Over. Short odds are not treated as “safe” by themselves;
+          a 4.00 can score high if analysis likes it.
         </div>
 
         <div className="flex flex-wrap items-center gap-4 border-t-3 border-black bg-panel-2 px-4 py-5">
@@ -353,24 +438,18 @@ export function GenerateForm({ onCreated }: { onCreated?: () => void }) {
           >
             {loading
               ? phaseLabel
-              : `Get booking code (${legCount} games)`}
+              : `Get booking code (~${targetOdds} odds)`}
           </button>
           <div className="min-w-[160px] flex-1">
             <p className="hud-label">Now doing</p>
             <p className="text-lg font-bold text-gold">{phaseLabel}</p>
+            {nowScanning && (
+              <p className="truncate text-sm font-semibold text-mute">
+                {nowScanning}
+              </p>
+            )}
             <div className="meter mt-2 max-w-xs">
-              <span
-                style={{
-                  width:
-                    phase === "idle"
-                      ? "8%"
-                      : phase === "scan"
-                        ? "40%"
-                        : phase === "stack"
-                          ? "75%"
-                          : "100%",
-                }}
-              />
+              <span style={{ width: meterWidth }} />
             </div>
           </div>
           {error && (

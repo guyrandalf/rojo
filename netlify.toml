@@ -20,7 +20,6 @@
 #   Site configuration → Environment variables
 # Mark these as "Contains secret values":
 #   DATABASE_URL   Neon pooled URL, e.g. ...?sslmode=require
-#   XAI_API_KEY    optional SpaceXAI key
 #
 # Do NOT create Netlify "secret" vars for:
 #   SPORTY_COUNTRY, DEFAULT_BOOKMAKER, NODE_VERSION

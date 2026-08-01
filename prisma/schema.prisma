@@ -28,18 +28,95 @@ enum MarketKind {
   OTHER
 }
 
-model ForecastRun {
-  id          String   @id @default(cuid())
-  createdAt   DateTime @default(now())
-  country     String   @default("ng")
-  legCount    Int
-  minOdds     Float?
-  maxOdds     Float?
-  strategy    String   @default("highest_confidence")
-  modelNotes  String?
-  aiEnabled   Boolean  @default(false)
+/// A run is analysed one match at a time across several short requests, so it
+/// never depends on a single function staying alive. SCANNING -> ANALYZING ->
+/// READY -> DONE. FAILED is terminal.
+enum RunStatus {
+  SCANNING
+  ANALYZING
+  READY
+  DONE
+  FAILED
+}
 
-  slips BetSlip[]
+model ForecastRun {
+  id         String    @id @default(cuid())
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  country    String    @default("ng")
+  legCount   Int
+  minOdds    Float?
+  maxOdds    Float?
+  strategy   String    @default("highest_confidence")
+  modelNotes String?
+  status     RunStatus @default(SCANNING)
+
+  /// Total odds the punter asked for; legs are chosen to reach it with the
+  /// least risk. Null on runs from before target-odds mode.
+  targetOdds Float?
+
+  // Session state. The board scan writes these once; each step reads them.
+  bookmaker        String   @default("sportybet")
+  dateFrom         String?
+  dateTo           String?
+  minConfidence    Float    @default(0.58)
+  useForm          Boolean  @default(true)
+  includeBasketball Boolean @default(false)
+  /// Event ids the scan phase queued for per-match analysis.
+  targetEventIds   Json?
+  /// How many of those events have been analysed (success or skip).
+  analyzedCount    Int      @default(0)
+  boardSize        Int      @default(0)
+  formHits         Int      @default(0)
+  warnings         Json?
+
+  slips      BetSlip[]
+  candidates Candidate[]
+
+  @@index([createdAt])
+  @@index([status])
+}
+
+/// One scored market outcome, written by a single-match step and read back by
+/// the finish phase. Persisting these is what lets the run span requests.
+model Candidate {
+  id            String   @id @default(cuid())
+  createdAt     DateTime @default(now())
+  forecastRunId String
+  eventId       String
+  gameId        String?
+  homeTeam      String
+  awayTeam      String
+  tournament    String?
+  kickoffAt     DateTime?
+  marketId      String
+  marketDesc    String
+  outcomeId     String
+  outcomeDesc   String
+  /// Empty string rather than null: Postgres unique indexes treat NULLs as
+  /// distinct, which would defeat skipDuplicates when a step is retried.
+  specifier     String   @default("")
+  odds          Float
+  impliedProb   Float
+  confidence    Float
+  edge          Float
+  reasoning     String?
+  sourceOdds    Json?
+
+  forecastRun ForecastRun @relation(fields: [forecastRunId], references: [id], onDelete: Cascade)
+
+  @@unique([forecastRunId, eventId, marketId, outcomeId, specifier])
+  @@index([forecastRunId, confidence])
+}
+
+/// TheSportsDB lookups survive between invocations here. Serverless instances
+/// do not share memory, and the free demo key rate-limits hard.
+model FormCache {
+  key       String   @id
+  payload   Json?
+  expiresAt DateTime
+
+  @@index([expiresAt])
 }
 
 model BetSlip {
@@ -88,8 +165,15 @@ model Pick {
   reasoning      String?
   sourceOdds     Json?
 
+  // Settlement. Until these are filled in there is no way to tell whether the
+  // model is actually any good, so leave room for it from the start.
+  settledAt      DateTime?
+  won            Boolean?
+  settleNote     String?
+
   betSlip BetSlip @relation(fields: [betSlipId], references: [id], onDelete: Cascade)
 
   @@index([betSlipId])
   @@index([eventId])
+  @@index([settledAt])
 }

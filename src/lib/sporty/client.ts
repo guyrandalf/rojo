@@ -188,16 +188,26 @@ export async function fetchUpcomingBoard(options?: {
   /** How many pages to crawl (default 8, pageSize 40 → up to ~320 events) */
   maxPages?: number
   pageSize?: number
+  /**
+   * Pages fetched at once. Raise it to trade politeness for wall-clock when the
+   * caller is on a short function budget; setting it to `maxPages` turns the
+   * whole crawl into a single round trip (and disables the early-stop, since
+   * every page is already in flight).
+   */
+  pageConcurrency?: number
 }): Promise<SportyEvent[]> {
   const maxPages = options?.maxPages ?? 8
   const pageSize = options?.pageSize ?? 40
+  const pageConcurrency = Math.max(1, options?.pageConcurrency ?? 2)
   const seen = new Set<string>()
   const all: SportyEvent[] = []
   let firstError: string | null = null
 
-  // Parallel batches of 2 to keep latency reasonable
-  for (let start = 1; start <= maxPages; start += 2) {
-    const pages = [start, start + 1].filter((p) => p <= maxPages)
+  for (let start = 1; start <= maxPages; start += pageConcurrency) {
+    const pages = Array.from(
+      { length: pageConcurrency },
+      (_, i) => start + i
+    ).filter((p) => p <= maxPages)
     const results = await Promise.all(
       pages.map(async (pageNum) => {
         try {
@@ -240,47 +250,6 @@ export async function fetchUpcomingBoard(options?: {
 
   all.sort((a, b) => a.estimateStartTime - b.estimateStartTime)
   return all
-}
-
-/** Merge full market boards onto events (deep corners / halves / props). */
-export async function enrichEventsWithFullMarkets(
-  events: SportyEvent[],
-  options?: { country?: string; bookmaker?: Bookmaker; concurrency?: number }
-): Promise<SportyEvent[]> {
-  const concurrency = options?.concurrency ?? 5
-  const out: SportyEvent[] = new Array(events.length)
-  let cursor = 0
-
-  async function worker() {
-    while (true) {
-      const idx = cursor++
-      if (idx >= events.length) return
-      const base = events[idx]
-      const detail = await fetchEventDetail(base.eventId, {
-        country: options?.country,
-        bookmaker: options?.bookmaker,
-      })
-      if (detail?.markets?.length) {
-        out[idx] = {
-          ...base,
-          ...detail,
-          markets: detail.markets,
-          homeTeamName: detail.homeTeamName || base.homeTeamName,
-          awayTeamName: detail.awayTeamName || base.awayTeamName,
-          sport: detail.sport || base.sport,
-        }
-      } else {
-        out[idx] = base
-      }
-    }
-  }
-
-  await Promise.all(
-    Array.from({ length: Math.min(concurrency, Math.max(1, events.length)) }, () =>
-      worker()
-    )
-  )
-  return out
 }
 
 /**

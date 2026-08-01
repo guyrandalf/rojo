@@ -3,10 +3,17 @@
 Betting desk that:
 
 1. Pulls live SportyBet / Football.com fixtures and odds  
-2. Ranks high-probability legs (Poisson + form when available)  
-3. Optionally uses SpaceXAI to finalize picks  
-4. Creates a real **booking code**  
-5. Stores slips in Postgres (Neon in production)
+2. Analyses each match one request at a time (Poisson + form + H2H), so no
+   single serverless call has to survive the whole board  
+3. Ranks legs by analysis conviction and creates a real **booking code**  
+4. Stores runs, candidates, and slips in Postgres (Neon in production)
+
+The generate flow is chunked: `POST /api/forecast/start` scans the board and
+queues matches, the browser then calls `POST /api/forecast/step` once per
+match (2 in flight), and `POST /api/forecast/finish` ranks everything and
+books the code. Every request stays comfortably inside Netlify's 10s
+synchronous-function limit, and a failed match retries alone instead of
+restarting the run.
 
 ## Stack
 
@@ -37,7 +44,7 @@ npm run dev
 npx prisma db push
 ```
 
-Tables: `ForecastRun`, `BetSlip`, `Pick`.
+Tables: `ForecastRun`, `Candidate`, `BetSlip`, `Pick`, `FormCache`.
 
 ## Netlify
 
@@ -56,7 +63,6 @@ Suggested site name: e.g. `playrojo` → `playrojo.netlify.app`
 | Name | Required | Notes |
 |------|----------|--------|
 | `DATABASE_URL` | yes | Neon pooled URL + `sslmode=require` |
-| `XAI_API_KEY` | no | “Help me pick better” |
 
 Do **not** add `DEFAULT_BOOKMAKER` or `SPORTY_COUNTRY` as Netlify “secret” env vars.  
 They are not secrets. If Netlify secret-scanning warns  
@@ -71,7 +77,6 @@ Build command is `npm run build` (`prisma generate && next build`).
 |------|----------|---------|--------|
 | `DATABASE_URL` | yes | yes | Neon pooled URL + `sslmode=require` |
 | `DATABASE_SSL` | no | no | set `true` if URL has no sslmode |
-| `XAI_API_KEY` | no | yes | coach assist |
 | `SPORTY_COUNTRY` | no | no | default `ng` (also in netlify.toml) |
 | `DEFAULT_BOOKMAKER` | no | no | `football` or `sportybet` (also in netlify.toml) |
 | `NEXT_PUBLIC_SITE_URL` | prod | no | `https://playrojo.netlify.app` (OG image absolute URL) |

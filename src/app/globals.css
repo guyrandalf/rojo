@@ -6,7 +6,33 @@
   --font-mono: "Share Tech Mono", "Courier New", monospace;
 }
 
+/* Light is the default desk. */
 :root {
+  color-scheme: light;
+  --pitch: #f2efe7;
+  --panel: #ffffff;
+  --panel-2: #e9e5d9;
+  --ink: #141414;
+  --mute: #575757;
+  --dim: #8f8f8f;
+  --line: #cfcabb;
+  --rojo: #e10600;
+  /* Darker than the dark-theme gold so it stays readable on white */
+  --gold: #9c7000;
+  --ok: #0f8a4b;
+  --hud-label: #6b6b6b;
+  --field: #ffffff;
+  --leg: #faf8f1;
+  --chip-hover: #dcd7c8;
+  --meter-bg: #e4dfd2;
+  --grid-line: rgba(0, 0, 0, 0.05);
+  /* Offset shadow behind code digits muddies dark gold on white; dark only */
+  --code-shadow: none;
+  --hard-shadow: 4px 4px 0 #000000;
+  --hard-shadow-sm: 2px 2px 0 #000000;
+}
+
+:root[data-theme="dark"] {
   color-scheme: dark;
   --pitch: #0e0e0e;
   --panel: #171717;
@@ -15,11 +41,24 @@
   --mute: #9a9a9a;
   --dim: #5c5c5c;
   --line: #333333;
-  --rojo: #e10600;
   --gold: #e8b923;
   --ok: #3ddc84;
-  --hard-shadow: 4px 4px 0 #000000;
-  --hard-shadow-sm: 2px 2px 0 #000000;
+  --hud-label: #c8c8c8;
+  --field: #0a0a0a;
+  --leg: #141414;
+  --chip-hover: #2a2a2a;
+  --meter-bg: #0a0a0a;
+  --grid-line: rgba(255, 255, 255, 0.03);
+  --code-shadow: 2px 2px 0 #000;
+}
+
+/* Elements that are explicitly black-on-black keep the bright accent colors
+   in both themes (e.g. the 18+ badge, bookmaker chip). */
+.bg-black,
+.bg-rojo {
+  --gold: #e8b923;
+  --ink: #f2f2f2;
+  --mute: #c9c9c9;
 }
 
 @theme inline {
@@ -50,8 +89,8 @@ body {
 body {
   background-color: var(--pitch);
   background-image:
-    linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+    linear-gradient(var(--grid-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
   background-size: 24px 24px;
 }
 
@@ -79,7 +118,7 @@ select {
   appearance: none;
   width: 100%;
   border: 3px solid #000;
-  background: #0a0a0a;
+  background: var(--field);
   color: var(--ink);
   padding: 0.85rem 0.9rem;
   box-shadow: inset 2px 2px 0 #000;
@@ -157,11 +196,12 @@ button:disabled {
 }
 
 .btn-chip:hover {
-  background: #2a2a2a;
+  background: var(--chip-hover);
 }
 
 .btn-chip.is-on {
-  background: var(--gold);
+  /* Fixed bright gold: readable with dark text in both themes */
+  background: #e8b923;
   color: #111;
 }
 
@@ -177,7 +217,7 @@ button:disabled {
   font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: none;
-  color: #c8c8c8;
+  color: var(--hud-label);
 }
 
 .ticket-code {
@@ -185,13 +225,13 @@ button:disabled {
   font-weight: 700;
   letter-spacing: 0.18em;
   color: var(--gold);
-  text-shadow: 2px 2px 0 #000;
+  text-shadow: var(--code-shadow);
 }
 
 .meter {
   height: 14px;
   border: 3px solid #000;
-  background: #0a0a0a;
+  background: var(--meter-bg);
   overflow: hidden;
 }
 
@@ -207,7 +247,7 @@ button:disabled {
 
 .leg-slot {
   border: 3px solid #000;
-  background: #141414;
+  background: var(--leg);
   box-shadow: var(--hard-shadow-sm);
 }
 

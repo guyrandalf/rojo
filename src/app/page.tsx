@@ -5,6 +5,7 @@ import { GenerateForm } from "@/components/generate-form"
 import { MatchdayHud } from "@/components/matchday-hud"
 import { SlipHistory } from "@/components/slip-history"
 import { SlipViewer } from "@/components/slip-viewer"
+import { ThemeToggle } from "@/components/theme-toggle"
 
 export default function HomePage() {
   const [refreshKey, setRefreshKey] = useState(0)
@@ -43,6 +44,7 @@ export default function HomePage() {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <ThemeToggle />
             <button
               type="button"
               onClick={() =>
@@ -70,10 +72,12 @@ export default function HomePage() {
             <span className="block text-rojo">GET THE CODE.</span>
           </h1>
           <p className="mt-4 max-w-2xl text-base font-medium leading-relaxed text-mute sm:text-lg">
-            Up to 10 games. AI always analyses deep markets (halves, corners,
-            team goals, and more), not only 1X2. Strength is by analysis, not
-            “short odds = sure”. Optional basketball. Open your old codes under
-            “My codes” to change games.
+            Say the total odds you want; the desk builds the safest slip that
+            reaches it (up to 10 games). Every match is analysed across deep
+            markets (halves, corners, team goals, and more), not only 1X2.
+            Strength is by analysis, not “short odds = sure”. Your old codes
+            stay under “My codes”; to change games, load the code on the
+            betting site.
           </p>
         </div>
 
@@ -83,11 +87,6 @@ export default function HomePage() {
               <SlipViewer
                 slipId={selectedSlipId}
                 onClose={() => setSelectedSlipId(null)}
-                onRemixed={(id) => {
-                  setRefreshKey((k) => k + 1)
-                  setHudBump((k) => k + 1)
-                  setSelectedSlipId(id)
-                }}
               />
             ) : (
               <GenerateForm

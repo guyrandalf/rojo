@@ -70,7 +70,7 @@ export const metadata: Metadata = {
 
 export const viewport: Viewport = {
   themeColor: "#e10600",
-  colorScheme: "dark",
+  colorScheme: "light dark",
   width: "device-width",
   initialScale: 1,
 }
@@ -81,8 +81,15 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <head>
+        {/* Apply the saved theme before first paint. Light is the default. */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html:
+              'try{if(localStorage.getItem("rojo-theme")==="dark")document.documentElement.dataset.theme="dark"}catch(e){}',
+          }}
+        />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link
           rel="preconnect"

@@ -181,6 +181,13 @@ export type H2HSnapshot = {
   avgGoals: number
 }
 
+/** Everything the free stats feed can tell us about one fixture. */
+export type FormBundle = {
+  homeForm?: FormSnapshot
+  awayForm?: FormSnapshot
+  h2h?: H2HSnapshot
+}
+
 export type EnrichedMatchContext = {
   model: MatchModel
   homeForm?: FormSnapshot

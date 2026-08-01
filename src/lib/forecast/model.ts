@@ -5,10 +5,11 @@ import {
   buildMatchModel,
   modelProbForOutcome,
   type EnrichedMatchContext,
-  type FormSnapshot,
-  type H2HSnapshot,
+  type FormBundle,
 } from "./match-model"
 import { clamp } from "./math"
+
+export type { FormBundle }
 
 export type ForecastOptions = {
   legCount?: number
@@ -223,126 +224,115 @@ export function scoreOutcome(input: {
   }
 }
 
-export type FormBundle = {
-  homeForm?: FormSnapshot
-  awayForm?: FormSnapshot
-  h2h?: H2HSnapshot
+/** Kickoff window a run will consider, in epoch ms. */
+export function forecastWindow(options: ForecastOptions = {}): {
+  start: number
+  end: number
+} {
+  const maxHours = options.maxHoursAhead ?? 336
+  const now = Date.now()
+
+  let start = now + 15 * 60 * 1000
+  let end = now + maxHours * 60 * 60 * 1000
+  if (options.dateFrom) {
+    start = Math.max(start, localDayBounds(options.dateFrom).start)
+  }
+  if (options.dateTo) {
+    end = Math.min(end, localDayBounds(options.dateTo).end)
+  }
+  return { start, end }
 }
 
-export function buildCandidates(
-  events: SportyEvent[],
+/**
+ * Score every analyzable outcome on ONE fixture.
+ *
+ * Single-match by design: a run analyses one fixture per HTTP request and
+ * persists the result, so no single request has to survive the whole board.
+ */
+export function buildCandidatesForEvent(
+  event: SportyEvent,
   options: ForecastOptions = {},
-  formByEvent?: Map<string, FormBundle>
+  form?: FormBundle
 ): CandidatePick[] {
   const minConfidence = options.minConfidence ?? 0.62
   // Odds band optional — default: no limit (analysis-only)
   const minOdds = options.minOdds ?? 1.01
   const maxOdds = options.maxOdds ?? 100
-  const maxHours = options.maxHoursAhead ?? 336
   const allowed = new Set(options.markets ?? ["any"])
   const now = Date.now()
+  const { start: windowStart, end: windowEnd } = forecastWindow(options)
 
-  let windowStart = now + 15 * 60 * 1000
-  let windowEnd = now + maxHours * 60 * 60 * 1000
-  if (options.dateFrom) {
-    windowStart = Math.max(windowStart, localDayBounds(options.dateFrom).start)
-  }
-  if (options.dateTo) {
-    windowEnd = Math.min(windowEnd, localDayBounds(options.dateTo).end)
-  }
+  const kickoffMs = event.estimateStartTime
+  if (kickoffMs < windowStart || kickoffMs > windowEnd) return []
 
+  const base = buildMatchModel(event)
+  const ctx: EnrichedMatchContext | null = base
+    ? applyFormToModel(base, form?.homeForm, form?.awayForm, form?.h2h)
+    : null
+
+  const hoursUntil = (kickoffMs - now) / (1000 * 60 * 60)
+  const tournament = event.sport?.category?.tournament?.name
+  const sportName = event.sport?.name
   const candidates: CandidatePick[] = []
-  const ctxByEvent = new Map<string, EnrichedMatchContext | null>()
 
-  for (const event of events) {
-    const kickoffMs = event.estimateStartTime
-    if (kickoffMs < windowStart || kickoffMs > windowEnd) continue
+  for (const { market, outcome } of flattenActiveOutcomes(event)) {
+    if (!isAnalyzableMarket(market.id, market.desc)) continue
 
-    const base = buildMatchModel(event)
-    if (!base) {
-      ctxByEvent.set(event.eventId, null)
-      continue
+    const kind = marketKind(market.id, market.desc)
+    if (!allowed.has("any") && kind !== "other" && !allowed.has(kind)) continue
+
+    const odds = Number(outcome.odds)
+    if (!Number.isFinite(odds) || odds < minOdds || odds > maxOdds) continue
+
+    const feedProb = outcome.probability ? Number(outcome.probability) : undefined
+    // Need either feed probability or a model path for conviction
+    const hasFeed =
+      feedProb != null && Number.isFinite(feedProb) && feedProb > 0.05
+    if (!hasFeed && !ctx) continue
+
+    const scored = scoreOutcome({
+      odds,
+      feedProbability: hasFeed ? feedProb : undefined,
+      marketId: market.id,
+      marketDesc: market.desc,
+      outcomeDesc: outcome.desc,
+      specifier: market.specifier ?? null,
+      hoursUntilKickoff: hoursUntil,
+      ctx,
+    })
+
+    if (scored.confidence < minConfidence) continue
+
+    const impliedProb = hasFeed && feedProb! > 0 ? feedProb! : 1 / odds
+
+    const sourceOdds: Record<string, number> = {}
+    for (const o of market.outcomes) {
+      sourceOdds[o.desc] = Number(o.odds)
     }
-    const forms = formByEvent?.get(event.eventId)
-    ctxByEvent.set(
-      event.eventId,
-      applyFormToModel(base, forms?.homeForm, forms?.awayForm, forms?.h2h)
-    )
-  }
 
-  for (const event of events) {
-    const kickoffMs = event.estimateStartTime
-    if (kickoffMs < windowStart || kickoffMs > windowEnd) continue
+    const labelTournament = sportName
+      ? `${tournament ?? "—"} · ${sportName}`
+      : tournament
 
-    const hoursUntil = (kickoffMs - now) / (1000 * 60 * 60)
-    const tournament = event.sport?.category?.tournament?.name
-    const sportName = event.sport?.name
-    const ctx = ctxByEvent.get(event.eventId) ?? null
-    const rows = flattenActiveOutcomes(event)
-
-    for (const { market, outcome } of rows) {
-      if (!isAnalyzableMarket(market.id, market.desc)) continue
-
-      const kind = marketKind(market.id, market.desc)
-      if (!allowed.has("any") && kind !== "other" && !allowed.has(kind)) continue
-      if (kind === "other" && !allowed.has("any") && !allowed.has("other" as never)) {
-        // allow other when markets is any only
-      }
-
-      const odds = Number(outcome.odds)
-      if (!Number.isFinite(odds) || odds < minOdds || odds > maxOdds) continue
-
-      const feedProb = outcome.probability ? Number(outcome.probability) : undefined
-      // Need either feed probability or a model path for conviction
-      const hasFeed =
-        feedProb != null && Number.isFinite(feedProb) && feedProb > 0.05
-      if (!hasFeed && !ctx) continue
-
-      const scored = scoreOutcome({
-        odds,
-        feedProbability: hasFeed ? feedProb : undefined,
-        marketId: market.id,
-        marketDesc: market.desc,
-        outcomeDesc: outcome.desc,
-        specifier: market.specifier ?? null,
-        hoursUntilKickoff: hoursUntil,
-        ctx,
-      })
-
-      if (scored.confidence < minConfidence) continue
-
-      const impliedProb =
-        hasFeed && feedProb! > 0 ? feedProb! : 1 / odds
-
-      const sourceOdds: Record<string, number> = {}
-      for (const o of market.outcomes) {
-        sourceOdds[o.desc] = Number(o.odds)
-      }
-
-      const labelTournament = sportName
-        ? `${tournament ?? "—"} · ${sportName}`
-        : tournament
-
-      candidates.push({
-        eventId: event.eventId,
-        gameId: event.gameId,
-        homeTeam: event.homeTeamName,
-        awayTeam: event.awayTeamName,
-        tournament: labelTournament,
-        kickoffAt: new Date(kickoffMs),
-        marketId: market.id,
-        marketDesc: market.desc,
-        outcomeId: outcome.id,
-        outcomeDesc: outcome.desc,
-        specifier: market.specifier ?? null,
-        odds,
-        impliedProb,
-        confidence: scored.confidence,
-        edge: scored.edge,
-        reasoning: scored.reasoning,
-        sourceOdds,
-      })
-    }
+    candidates.push({
+      eventId: event.eventId,
+      gameId: event.gameId,
+      homeTeam: event.homeTeamName,
+      awayTeam: event.awayTeamName,
+      tournament: labelTournament,
+      kickoffAt: new Date(kickoffMs),
+      marketId: market.id,
+      marketDesc: market.desc,
+      outcomeId: outcome.id,
+      outcomeDesc: outcome.desc,
+      specifier: market.specifier ?? null,
+      odds,
+      impliedProb,
+      confidence: scored.confidence,
+      edge: scored.edge,
+      reasoning: scored.reasoning,
+      sourceOdds,
+    })
   }
 
   return candidates
@@ -410,6 +400,163 @@ export function selectLegs(
   }
 
   return selected
+}
+
+/**
+ * Build the SAFEST slip whose total odds reach `targetOdds`.
+ *
+ * The punter states the payout they want ("give me 5 odds"); the desk's job is
+ * to spend as little risk as possible getting there. In log space that is:
+ * maximize Σ log(confidence) subject to Σ log(odds) ≥ log(target), ≤ maxLegs
+ * legs, one pick per match.
+ *
+ * Greedy in three passes, run once per leg budget k = 2..maxLegs (the pool is
+ * ≤ ~40 matches, so this is cheap), keeping the most confident slip that
+ * reaches the target. Trying every k matters: a 2-odds target is safer as two
+ * 1.45s than as four 1.20s, and only the small-k run finds that.
+ *
+ * Per run:
+ *  1. Baseline: the most confident option per match, safest matches first.
+ *  2. Upgrade: while short of the target, apply the move that buys the most
+ *     log-odds for the least confidence lost — either switching a chosen match
+ *     to a longer-odds option, or adding another match.
+ *  3. Trim: drop the least confident legs the target can spare, so we do not
+ *     carry risk the payout does not need.
+ */
+export function selectLegsForTargetOdds(
+  candidates: CandidatePick[],
+  options: { targetOdds: number; maxLegs: number }
+): { picks: CandidatePick[]; reachedTarget: boolean } {
+  const maxLegs = Math.max(2, options.maxLegs)
+  const logTarget = Math.log(Math.max(1.2, options.targetOdds))
+
+  const byEvent = new Map<string, CandidatePick[]>()
+  for (const c of candidates) {
+    const list = byEvent.get(c.eventId)
+    if (list) list.push(c)
+    else byEvent.set(c.eventId, [c])
+  }
+  for (const list of byEvent.values()) {
+    list.sort((a, b) => b.confidence - a.confidence || a.odds - b.odds)
+  }
+
+  const events = [...byEvent.entries()]
+    .map(([eventId, list]) => ({ eventId, list }))
+    .sort((a, b) => b.list[0].confidence - a.list[0].confidence)
+
+  if (events.length === 0) return { picks: [], reachedTarget: false }
+
+  const runWithBudget = (
+    legBudget: number
+  ): { picks: CandidatePick[]; reached: boolean; logOdds: number } => {
+    // 1. Baseline: safest option on the safest matches.
+    const chosen = new Map<string, CandidatePick>()
+    for (const e of events.slice(0, legBudget)) chosen.set(e.eventId, e.list[0])
+
+    const totalLogOdds = () =>
+      [...chosen.values()].reduce((s, p) => s + Math.log(p.odds), 0)
+
+    // 2. Upgrade until the target is met or no move is left. While far from
+    // the target, take the move with the best odds-per-risk ratio; once a
+    // single move can cross the line, take the CHEAPEST crossing move instead,
+    // so the last step does not overshoot into needless risk.
+    let guard = 300
+    while (totalLogOdds() < logTarget && guard-- > 0) {
+      const needed = logTarget - totalLogOdds()
+      let bestRatio: { ratio: number; apply: () => void } | null = null
+      let bestFinal: { cost: number; apply: () => void } | null = null
+
+      const consider = (gain: number, cost: number, apply: () => void) => {
+        if (gain <= 0) return
+        const ratio = cost / gain
+        if (!bestRatio || ratio < bestRatio.ratio) bestRatio = { ratio, apply }
+        if (gain >= needed && (!bestFinal || cost < bestFinal.cost)) {
+          bestFinal = { cost, apply }
+        }
+      }
+
+      // Switch a chosen match to a longer-odds option on the same match.
+      for (const [eventId, cur] of chosen) {
+        for (const alt of byEvent.get(eventId)!) {
+          if (alt.odds <= cur.odds) continue
+          consider(
+            Math.log(alt.odds) - Math.log(cur.odds),
+            Math.log(cur.confidence) - Math.log(alt.confidence),
+            () => chosen.set(eventId, alt)
+          )
+        }
+      }
+
+      // Or bring in another match, if there is room.
+      if (chosen.size < legBudget) {
+        for (const e of events) {
+          if (chosen.has(e.eventId)) continue
+          const alt = e.list[0]
+          consider(Math.log(alt.odds), -Math.log(alt.confidence), () =>
+            chosen.set(e.eventId, alt)
+          )
+        }
+      }
+
+      const move = bestFinal ?? bestRatio
+      if (!move) break
+      ;(move as { apply: () => void }).apply()
+    }
+
+    // 3. Trim legs the target does not need, least confident first.
+    let trimmed = true
+    while (trimmed && chosen.size > 2) {
+      trimmed = false
+      let drop: string | null = null
+      let dropConf = Infinity
+      const current = totalLogOdds()
+      for (const [eventId, p] of chosen) {
+        const without = current - Math.log(p.odds)
+        if (without >= logTarget && p.confidence < dropConf) {
+          dropConf = p.confidence
+          drop = eventId
+        }
+      }
+      if (drop) {
+        chosen.delete(drop)
+        trimmed = true
+      }
+    }
+
+    const logOdds = totalLogOdds()
+    return {
+      picks: [...chosen.values()].sort((a, b) => b.confidence - a.confidence),
+      reached: logOdds >= logTarget - 1e-9,
+      logOdds,
+    }
+  }
+
+  let best: { picks: CandidatePick[]; reached: boolean; logOdds: number } | null =
+    null
+  for (let k = 2; k <= maxLegs; k++) {
+    const r = runWithBudget(k)
+    if (!best) {
+      best = r
+      continue
+    }
+    if (r.reached && !best.reached) {
+      best = r
+      continue
+    }
+    if (r.reached === best.reached) {
+      if (r.reached) {
+        // Both reach the target: take the safer slip.
+        const conf = (x: typeof r) =>
+          x.picks.reduce((s, p) => s + Math.log(p.confidence), 0)
+        if (conf(r) > conf(best)) best = r
+      } else if (r.logOdds > best.logOdds) {
+        // Neither reaches it: take whichever got closer.
+        best = r
+      }
+    }
+  }
+
+  return { picks: best!.picks, reachedTarget: best!.reached }
 }
 
 export function combinedOdds(picks: CandidatePick[]): number {

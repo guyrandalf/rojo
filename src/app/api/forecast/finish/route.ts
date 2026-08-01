@@ -1,59 +1,17 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
-import { generateForecastSlip } from "@/lib/forecast/run"
+import { finishForecastRun } from "@/lib/forecast/session"
+import { humanError } from "../errors"
 
 export const dynamic = "force-dynamic"
-export const maxDuration = 60
 
 const bodySchema = z.object({
+  runId: z.string().min(1),
   legCount: z.number().int().min(2).max(10).optional(),
-  minOdds: z.number().min(1.01).max(100).optional(),
-  maxOdds: z.number().min(1.01).max(100).optional(),
-  country: z.string().min(2).max(4).optional(),
-  bookmaker: z.enum(["sportybet", "football"]).optional(),
+  targetOdds: z.number().min(1.2).max(2000).optional(),
   createCode: z.boolean().optional(),
-  useAi: z.boolean().optional(),
   label: z.string().max(120).optional(),
-  markets: z
-    .array(z.enum(["match_result", "over_under", "btts", "any"]))
-    .optional(),
-  maxHoursAhead: z.number().min(1).max(336).optional(),
-  dateFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
-  dateTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
-  minConfidence: z.number().min(0.5).max(0.95).optional(),
-  preferHighProbability: z.boolean().optional(),
-  includeBasketball: z.boolean().optional(),
 })
-
-function humanError(err: unknown): { status: number; error: string } {
-  const message = err instanceof Error ? err.message : "Could not make code"
-
-  if (/XAI_API_KEY|AI analysis on/i.test(message)) {
-    return { status: 503, error: message }
-  }
-  if (/not enough high-conviction|not enough strong/i.test(message)) {
-    return { status: 422, error: message }
-  }
-  if (
-    /timed out|timeout|ETIMEDOUT/i.test(message) ||
-    /UND_ERR_CONNECT/i.test(message)
-  ) {
-    return {
-      status: 504,
-      error:
-        "Took too long. Try fewer games, lower strength %, or a shorter day range.",
-    }
-  }
-  if (/Could not load fixtures|ECONNREFUSED|fetch failed|network/i.test(message)) {
-    return {
-      status: 502,
-      error:
-        "Could not reach the betting site board. Try again, or switch betting site.",
-    }
-  }
-
-  return { status: 502, error: message }
-}
 
 export async function POST(request: Request) {
   try {
@@ -61,32 +19,19 @@ export async function POST(request: Request) {
     const parsed = bodySchema.safeParse(json)
     if (!parsed.success) {
       return NextResponse.json(
-        {
-          ok: false,
-          error: "Some settings look wrong. Check games and dates (max 10 games).",
-          details: parsed.error.flatten(),
-        },
+        { ok: false, error: "Bad finish request.", details: parsed.error.flatten() },
         { status: 400 }
       )
     }
 
-    // Product: AI always on; ignore client toggle
-    const result = await generateForecastSlip({
-      ...parsed.data,
-      useAi: true,
-      markets: ["any"],
-      // No odds band from client
-      minOdds: 1.01,
-      maxOdds: 80,
-    })
+    const { runId, ...rest } = parsed.data
+    const result = await finishForecastRun(runId, rest)
 
     return NextResponse.json({
       ok: true,
       eventCount: result.eventCount,
       candidateCount: result.candidateCount,
       formHits: result.formHits,
-      aiEnabled: result.aiEnabled,
-      researchPoolSize: result.researchPoolSize,
       dateFrom: result.dateFrom,
       dateTo: result.dateTo,
       minConfidence: result.minConfidence,
@@ -94,10 +39,8 @@ export async function POST(request: Request) {
       deliveredLegs: result.deliveredLegs,
       bestEffort: result.bestEffort,
       warnings: result.warnings,
-      runId: result.run.id,
-      engine: result.aiEnabled
-        ? "deep_markets_ai_conviction"
-        : "deep_markets_stats_fallback",
+      runId: result.runId,
+      engine: "deep_markets_conviction",
       slip: {
         id: result.slip.id,
         status: result.slip.status,

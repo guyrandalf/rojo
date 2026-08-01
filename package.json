@@ -16,15 +16,12 @@
     "postinstall": "prisma generate"
   },
   "dependencies": {
-    "@ai-sdk/xai": "^4.0.18",
     "@prisma/adapter-pg": "^7.9.0",
     "@prisma/client": "^7.9.0",
-    "ai": "^7.0.35",
     "clsx": "^2.1.1",
     "dotenv": "^17.4.2",
     "lucide-react": "^1.26.0",
     "next": "16.2.11",
-    "openai": "^6.48.0",
     "pg": "^8.22.0",
     "react": "19.2.4",
     "react-dom": "19.2.4",

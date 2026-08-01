@@ -1,5 +1,6 @@
 import "server-only"
-import type { FormSnapshot, H2HSnapshot } from "./match-model"
+import type { FormBundle, FormSnapshot, H2HSnapshot } from "./match-model"
+import { cacheRead, cacheWrite } from "./form-cache"
 
 /**
  * Best-effort recent form + H2H via TheSportsDB free public API.
@@ -11,27 +12,6 @@ import type { FormSnapshot, H2HSnapshot } from "./match-model"
 
 const TSDB = "https://www.thesportsdb.com/api/v1/json/3"
 const UA = "PlayRojo/1.0 (personal; stats enrichment)"
-
-type CacheEntry<T> = { at: number; value: T }
-const teamCache = new Map<string, CacheEntry<{ id: string; name: string } | null>>()
-const formCache = new Map<string, CacheEntry<FormSnapshot | null>>()
-const h2hCache = new Map<string, CacheEntry<H2HSnapshot | null>>()
-
-const TTL_MS = 30 * 60 * 1000
-
-function cacheGet<T>(map: Map<string, CacheEntry<T>>, key: string): T | undefined {
-  const hit = map.get(key)
-  if (!hit) return undefined
-  if (Date.now() - hit.at > TTL_MS) {
-    map.delete(key)
-    return undefined
-  }
-  return hit.value
-}
-
-function cacheSet<T>(map: Map<string, CacheEntry<T>>, key: string, value: T) {
-  map.set(key, { at: Date.now(), value })
-}
 
 function normalizeName(name: string): string {
   return name
@@ -75,9 +55,9 @@ async function tsdbGet<T>(path: string): Promise<T | null> {
 export async function resolveTeamId(
   teamName: string
 ): Promise<{ id: string; name: string } | null> {
-  const key = normalizeName(teamName)
-  const cached = cacheGet(teamCache, key)
-  if (cached !== undefined) return cached
+  const key = `team:${normalizeName(teamName)}`
+  const cached = await cacheRead<{ id: string; name: string }>(key)
+  if (cached.hit) return cached.value
 
   // Search with a shortened query (drop trailing FC noise)
   const q = encodeURIComponent(teamName.replace(/\s+FC$/i, "").trim())
@@ -99,7 +79,7 @@ export async function resolveTeamId(
     }
   }
 
-  cacheSet(teamCache, key, best)
+  await cacheWrite(key, best)
   return best
 }
 
@@ -119,8 +99,9 @@ export async function fetchTeamForm(
   const resolved = await resolveTeamId(teamName)
   if (!resolved) return undefined
 
-  const cached = cacheGet(formCache, resolved.id)
-  if (cached !== undefined) return cached ?? undefined
+  const formKey = `form:${resolved.id}`
+  const cached = await cacheRead<FormSnapshot>(formKey)
+  if (cached.hit) return cached.value ?? undefined
 
   const data = await tsdbGet<{ results: LastEvent[] | null }>(
     `/eventslast.php?id=${resolved.id}`
@@ -130,7 +111,7 @@ export async function fetchTeamForm(
     .slice(0, 5)
 
   if (events.length === 0) {
-    cacheSet(formCache, resolved.id, null)
+    await cacheWrite(formKey, null)
     return undefined
   }
 
@@ -190,7 +171,7 @@ export async function fetchTeamForm(
     formScore,
     recent: recent.join(""),
   }
-  cacheSet(formCache, resolved.id, snap)
+  await cacheWrite(formKey, snap)
   return snap
 }
 
@@ -198,16 +179,16 @@ export async function fetchH2H(
   homeTeam: string,
   awayTeam: string
 ): Promise<H2HSnapshot | undefined> {
-  const key = `${normalizeName(homeTeam)}|${normalizeName(awayTeam)}`
-  const cached = cacheGet(h2hCache, key)
-  if (cached !== undefined) return cached ?? undefined
+  const key = `h2h:${normalizeName(homeTeam)}|${normalizeName(awayTeam)}`
+  const cached = await cacheRead<H2HSnapshot>(key)
+  if (cached.hit) return cached.value ?? undefined
 
   const [home, away] = await Promise.all([
     resolveTeamId(homeTeam),
     resolveTeamId(awayTeam),
   ])
   if (!home || !away) {
-    cacheSet(h2hCache, key, null)
+    await cacheWrite(key, null)
     return undefined
   }
 
@@ -245,7 +226,7 @@ export async function fetchH2H(
   })
 
   if (unique.length === 0) {
-    cacheSet(h2hCache, key, null)
+    await cacheWrite(key, null)
     return undefined
   }
 
@@ -273,46 +254,28 @@ export async function fetchH2H(
     draws,
     avgGoals: goals / unique.length,
   }
-  cacheSet(h2hCache, key, snap)
+  await cacheWrite(key, snap)
   return snap
 }
 
-export async function enrichMatchesWithForm(
-  matches: Array<{ eventId: string; homeTeam: string; awayTeam: string }>
-): Promise<
-  Map<
-    string,
-    { homeForm?: FormSnapshot; awayForm?: FormSnapshot; h2h?: H2HSnapshot }
-  >
-> {
-  const out = new Map<
-    string,
-    { homeForm?: FormSnapshot; awayForm?: FormSnapshot; h2h?: H2HSnapshot }
-  >()
-
-  // Limit concurrency to avoid hammering the free API.
-  const limit = 6
-  let i = 0
-
-  async function worker() {
-    while (i < matches.length) {
-      const idx = i++
-      const m = matches[idx]
-      try {
-        const [homeForm, awayForm, h2h] = await Promise.all([
-          fetchTeamForm(m.homeTeam),
-          fetchTeamForm(m.awayTeam),
-          fetchH2H(m.homeTeam, m.awayTeam),
-        ])
-        out.set(m.eventId, { homeForm, awayForm, h2h })
-      } catch {
-        out.set(m.eventId, {})
-      }
-    }
+/**
+ * Form + H2H for ONE match. The pipeline analyses a single match per request
+ * now, so there is no batch variant: the caller decides how many of these run
+ * at once, and the browser keeps that number low enough that the free TSDB key
+ * does not start returning 429s.
+ */
+export async function fetchFormBundle(
+  homeTeam: string,
+  awayTeam: string
+): Promise<FormBundle> {
+  try {
+    const [homeForm, awayForm, h2h] = await Promise.all([
+      fetchTeamForm(homeTeam),
+      fetchTeamForm(awayTeam),
+      fetchH2H(homeTeam, awayTeam),
+    ])
+    return { homeForm, awayForm, h2h }
+  } catch {
+    return {}
   }
-
-  await Promise.all(
-    Array.from({ length: Math.min(limit, matches.length) }, () => worker())
-  )
-  return out
 }
